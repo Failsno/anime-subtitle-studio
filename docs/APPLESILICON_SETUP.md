@@ -11,14 +11,16 @@ to actually get GPU acceleration out of the M5's unified memory.
 
 ## 1. Get the code onto the Mac
 
-From this PC, push/copy the repo (excluding `node_modules` and your local
-`config.json`, which is machine-specific) to the Mac — e.g. via a git remote,
-or `rsync`/AirDrop/USB. Once it's on the Mac:
+Clone the repo:
 
 ```bash
+git clone https://github.com/Failsno/anime-subtitle-studio.git
 cd anime-subtitle-studio
 npm install
 ```
+
+To update later, run `git pull` in that folder. Your `config.json` is
+gitignored, so pulling won't touch it.
 
 ## 2. Install Node (if not already installed)
 

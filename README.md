@@ -29,7 +29,9 @@ translation), follow the guide for your machine:
 Then, or for a quick start:
 
 ```bash
-# 1. Install dependencies
+# 1. Get the code and install dependencies
+git clone https://github.com/Failsno/anime-subtitle-studio.git
+cd anime-subtitle-studio
 npm install
 
 # 2. Start the server

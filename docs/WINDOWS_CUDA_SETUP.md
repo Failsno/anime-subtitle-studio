@@ -18,14 +18,16 @@ All commands below are for **PowerShell**. `$HOME` is `C:\Users\<you>`.
 
 ## 1. Get the code onto the PC
 
-Clone or pull the repo (your `config.json` is gitignored, so pulling won't
-touch it):
+Clone the repo (needs [Git](https://git-scm.com/); `winget install Git.Git`):
 
 ```powershell
-cd $HOME\Documents\GitHub\anime-subtitle-studio
-git pull
+git clone https://github.com/Failsno/anime-subtitle-studio.git
+cd anime-subtitle-studio
 npm install
 ```
+
+To update later, run `git pull` in that folder. Your `config.json` is
+gitignored, so pulling won't touch it.
 
 ## 2. Install Node, Python and ffmpeg (if not already installed)
 
