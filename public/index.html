@@ -1,0 +1,2609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>Subtitle Studio</title>
+<script>
+  // Apply the saved day/night choice before the page paints (no dark flash)
+  try { if (localStorage.getItem('theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) { /* storage unavailable */ }
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161616'/%3E%3Crect x='5' y='19' width='22' height='3' rx='1.5' fill='%23e8e8e8'/%3E%3Crect x='8' y='24' width='16' height='3' rx='1.5' fill='%23888'/%3E%3Ctext x='16' y='15' font-family='sans-serif' font-size='12' font-weight='bold' fill='%2398c379' text-anchor='middle'%3E%E3%81%82%3C/text%3E%3C/svg%3E" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #111111;
+    --bg2:       #181818;
+    --bg3:       #1f1f1f;
+    --border:    #2a2a2a;
+    --border2:   #333333;
+    --text:      #d4d4d4;
+    --text2:     #888888;
+    --text3:     #555555;
+    --accent:    #c8c8c8;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --radius:    4px;
+    --toolbar-bg: #0b0b0b;
+    --danger: #cc6666;
+    --code: #a8cc8c;
+    --btn-hover-bg: #252525;
+    --btn-hover-border: #444;
+    --btn-active-bg: #2a2a2a;
+    --on-accent: #111;
+    --accent-hover: #e0e0e0;
+    --danger-border: #5c2c2c;
+    --danger-bg: #2a1a1a;
+    --focus-border: #555;
+    --err-dot: #cc4444;
+    --code-bg: #0d0d0d;
+    --log-header-bg: #161616;
+    --scroll-thumb: #333;
+    --warn: #e5c07b;
+    --err: #e06c75;
+    --ok: #98c379;
+    --tab-bg: #141414;
+    --tab-hover: #171717;
+    color-scheme: dark;
+  }
+  /* Day mode: the toolbar's ☀/🌙 button sets <html data-theme="light"> */
+  :root[data-theme="light"] {
+    --bg: #fafaf9;
+    --bg2: #f0f0ee;
+    --bg3: #e5e5e2;
+    --border: #dadad6;
+    --border2: #c6c6c1;
+    --text: #1e1e1e;
+    --text2: #5a5a5a;
+    --text3: #8c8c8c;
+    --accent: #2b2b2b;
+    --toolbar-bg: #e2e2df;
+    --danger: #b83a3a;
+    --code: #2f6b25;
+    --btn-hover-bg: #e3e3e0;
+    --btn-hover-border: #a9a9a4;
+    --btn-active-bg: #d6d6d2;
+    --on-accent: #ffffff;
+    --accent-hover: #444444;
+    --danger-border: #e2b3b0;
+    --danger-bg: #fbeceb;
+    --focus-border: #8c8c8c;
+    --err-dot: #cc3b3b;
+    --code-bg: #f4f4ef;
+    --log-header-bg: #e9e9e6;
+    --scroll-thumb: #c2c2bd;
+    --warn: #9a6400;
+    --err: #c0392b;
+    --ok: #2e7d32;
+    --tab-bg: #d5d5d1;
+    --tab-hover: #dcdcd8;
+    color-scheme: light;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border2);
+    background: var(--toolbar-bg); /* darker than the tabs and content, so the active tab stands out */
+    flex-shrink: 0;
+  }
+
+  /* ── Server (gear) menu ── */
+  #server-menu-wrap { position: relative; display: flex; }
+  #gear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--text3);
+    cursor: pointer;
+  }
+  #gear-btn:hover, #gear-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--border2); background: var(--bg3); }
+  #server-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 50;
+    min-width: 190px;
+    padding: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  #server-menu button {
+    text-align: left;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 3px;
+    background: none;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  #server-menu button:hover, #server-menu button:focus-visible { background: var(--bg3); outline: none; }
+  #server-menu button.danger { color: var(--danger); }
+  #server-menu .menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+  #server-menu .menu-hint {
+    padding: 6px 10px 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.04em;
+  }
+  #server-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #server-overlay > div {
+    max-width: 420px;
+    padding: 20px 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    text-align: center;
+  }
+  #server-overlay-title { font-family: var(--mono); font-size: 13px; color: var(--accent); margin-bottom: 8px; }
+  #server-overlay-text { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  #server-overlay-text code { font-family: var(--mono); color: var(--code); }
+
+  #app-title {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.01em;
+    margin-right: 20px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    background: var(--bg3);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--btn-hover-bg); border-color: var(--btn-hover-border); }
+  .btn:active { background: var(--btn-active-bg); }
+  .btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+  .btn.primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.danger { border-color: var(--danger-border); color: var(--danger); }
+  .btn.danger:hover { background: var(--danger-bg); }
+
+  /* ── Main layout ── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left panel: folder bar + file tree + current job ── */
+  #left, #concat-left {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+  }
+
+  #folder-bar, #concat-folder-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  #folder-bar label, #concat-folder-bar label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+  #folder-input {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+  }
+  #folder-input:focus { border-color: var(--focus-border); }
+
+  #file-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  #file-tree::-webkit-scrollbar { width: 4px; }
+  #file-tree::-webkit-scrollbar-track { background: transparent; }
+  #file-tree::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .tree-folder {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 0.03em;
+    user-select: none;
+  }
+  .tree-folder svg { flex-shrink: 0; }
+
+  .tree-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px 3px 26px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 2px;
+    margin: 0 4px;
+    transition: background 0.1s;
+    user-select: none;
+  }
+  .tree-file:hover { background: var(--bg3); }
+  .tree-file.active { background: var(--bg3); color: var(--accent); }
+  .tree-file.done { color: var(--text3); }
+  .tree-file.error { color: var(--danger); }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-queued { background: var(--border2); }
+  .dot-running { background: var(--text2); animation: pulse 1.4s ease-in-out infinite; }
+  .dot-done { background: var(--text3); }
+  .dot-error { background: var(--err-dot); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── Current job strip ── */
+  #current-job {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    display: none;
+  }
+  #current-job.visible { display: block; }
+
+  #current-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  #current-filename {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 8px;
+  }
+  #progress-wrap, #concat-progress-wrap {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--text2);
+    border-radius: 2px;
+    transition: width 0.5s linear;
+  }
+  #progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* ── Log panel ── */
+  #log-panel {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    background: var(--code-bg);
+    display: flex;
+    flex-direction: column;
+    height: 28px;
+    min-height: 28px;
+    max-height: 80vh;
+  }
+  #log-resize-handle {
+    height: 4px;
+    background: transparent;
+    cursor: ns-resize;
+    flex-shrink: 0;
+  }
+  #log-resize-handle:hover { background: var(--border2); }
+  #log-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--log-header-bg);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  #log-header:hover { color: var(--text2); }
+  #log-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--code);
+    line-height: 1.5;
+    white-space: pre;
+  }
+  #log-body::-webkit-scrollbar { width: 6px; height: 6px; }
+  #log-body::-webkit-scrollbar-track { background: var(--code-bg); }
+  #log-body::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 2px; }
+  #log-body .log-dim { color: var(--focus-border); }
+  #log-body .log-warn { color: var(--warn); }
+  #log-body .log-err { color: var(--err); }
+
+  /* ── Right panel: queue ── */
+  .queue-controls {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .queue-controls .btn { flex: 1 0 auto; justify-content: center; }
+
+  /* Drag handle on the left edge of a side pane (queue, concat order) */
+  .pane-resizer {
+    width: 5px;
+    flex-shrink: 0;
+    cursor: ew-resize;
+    background: transparent;
+    transition: background 0.1s;
+  }
+  .pane-resizer:hover, .pane-resizer.dragging { background: var(--border2); }
+
+  #right {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+  }
+
+  #queue-header, #concat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  #queue-count { color: var(--text2); }
+
+  #queue-list {
+    flex: 1;
+    overflow-y: auto;
+  }
+  #queue-list::-webkit-scrollbar { width: 4px; }
+  #queue-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .queue-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: default;
+    transition: background 0.1s;
+  }
+  .queue-item:hover { background: var(--bg3); }
+  .queue-item.active { background: var(--bg3); }
+
+  .qi-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: space-between;
+  }
+  .qi-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    color: var(--text);
+  }
+  .qi-name.done { color: var(--text3); }
+  .qi-name.error { color: var(--danger); }
+
+  .qi-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    border: 1px solid;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-running { color: var(--text2); border-color: var(--border2); }
+  .badge-queued  { color: var(--text3); border-color: var(--border); }
+  .badge-done    { color: var(--text3); border-color: var(--border); }
+  .badge-error   { color: var(--danger);      border-color: var(--danger-border); }
+
+  .qi-dir {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .qi-mini-bar {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .qi-mini-fill {
+    height: 100%;
+    background: var(--text3);
+    border-radius: 1px;
+    transition: width 0.5s linear;
+  }
+
+  .qi-del, .qi-retry, .qi-retranslate {
+    font-size: 12px;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    display: none;
+  }
+  .queue-item:hover .qi-del,
+  .queue-item:hover .qi-retry,
+  .queue-item:hover .qi-retranslate { display: block; }
+  .qi-del:hover { color: var(--danger); }
+  .qi-retry:hover, .qi-retranslate:hover { color: var(--text); }
+  .qi-retranslate { font-family: var(--mono); font-size: 10px; }
+
+  /* Click an item to filter the log to it */
+  .queue-item { cursor: pointer; }
+  .queue-item.selected { background: var(--bg3); box-shadow: inset 2px 0 0 var(--accent); }
+  .qi-view { font-size: 12px; color: var(--text3); cursor: pointer; padding: 0 2px; line-height: 1; display: none; }
+  .queue-item:hover .qi-view { display: block; }
+  .qi-view:hover { color: var(--text); }
+  .qi-error { font-family: var(--mono); font-size: 10px; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qi-time { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
+  #queue-tools {
+    display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 10px; color: var(--text3);
+  }
+  #queue-tools label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #queue-tools input { accent-color: var(--accent); margin: 0; }
+  #queue-eta { margin-left: auto; }
+  .link-btn {
+    background: none; border: 1px solid var(--danger-border); color: var(--danger); border-radius: 2px;
+    font-family: var(--mono); font-size: 10px; padding: 1px 6px; cursor: pointer;
+  }
+  .link-btn:hover { background: var(--danger-bg); }
+  #log-filter { color: var(--accent); text-transform: none; letter-spacing: 0; }
+  #log-filter .clear { color: var(--text3); margin-left: 6px; cursor: pointer; }
+  #log-filter .clear:hover { color: var(--text); }
+
+  /* Settings: groups that hide together, Advanced flags, path marks, test */
+  .settings-group { display: flex; flex-direction: column; gap: 12px; }
+  details.advanced > summary {
+    font-family: var(--mono); font-size: 11px; color: var(--text3); cursor: pointer; padding: 6px 0; user-select: none;
+  }
+  details.advanced > summary:hover { color: var(--text2); }
+  .path-mark { margin-left: 6px; font-size: 11px; }
+  .path-mark.ok { color: var(--ok); }
+  .path-mark.bad { color: var(--err); }
+  #tr-test-result { font-family: var(--mono); font-size: 11px; color: var(--text2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  #tr-test-result .ok { color: var(--ok); }
+  #tr-test-result .bad { color: var(--err); }
+
+  /* Subtitle preview */
+  #subs-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #subs-overlay.open { display: flex; }
+  #subs-modal {
+    background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px;
+    width: min(1100px, 92vw); max-height: 85vh; display: flex; flex-direction: column;
+  }
+  #subs-body { overflow-y: auto; padding: 0 16px 12px; }
+  #subs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #subs-table th {
+    position: sticky; top: 0; background: var(--bg2); text-align: left; padding: 8px 6px;
+    font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  #subs-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); }
+  #subs-table td.num, #subs-table td.time { font-family: var(--mono); font-size: 10px; color: var(--text3); white-space: nowrap; }
+  #subs-table td.ja { color: var(--text2); }
+  #subs-table tr.untranslated td.en { color: var(--warn); }
+
+  /* ── Settings modal ── */
+  #settings-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #settings-overlay.open { display: flex; }
+  #settings-modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    width: 560px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+  #settings-header, .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    letter-spacing: 0.04em;
+  }
+  #settings-close { cursor: pointer; color: var(--text3); font-size: 16px; line-height: 1; }
+  #settings-close:hover { color: var(--text); }
+  #settings-body {
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .setting-row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 10px;
+    align-items: center;
+  }
+  .setting-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .setting-input {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    width: 100%;
+  }
+  .setting-input:focus { border-color: var(--focus-border); }
+  textarea.setting-input { resize: vertical; min-height: 72px; line-height: 1.4; }
+  .setting-row.top { align-items: start; }
+  .setting-hint {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.5;
+  }
+  .preset-row { display: flex; gap: 6px; }
+  .setting-check { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--text); cursor: pointer; }
+  .setting-check input { accent-color: var(--accent); margin: 0; }
+  .llama-status { font-family: var(--mono); font-size: 12px; color: var(--text2); overflow-wrap: anywhere; }
+  .llama-status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--text3); }
+  .llama-status .dot.ready { background: var(--ok); }
+  .llama-status .dot.loading { background: var(--warn); }
+  .llama-status .dot.error { background: var(--err); }
+  .model-pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .info {
+    position: relative;
+    display: inline-block;
+    margin-left: 4px;
+    color: var(--text3);
+    cursor: help;
+    outline: none;
+  }
+  .info:hover, .info:focus { color: var(--accent); }
+  .info .tip {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    z-index: 10;
+    width: 440px;
+    max-width: 80vw;
+    padding: 10px 12px;
+    background: var(--code-bg);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: normal;
+    cursor: default;
+  }
+  .info:hover .tip, .info:focus .tip, .info:focus-within .tip { display: block; }
+  .tip b { color: var(--accent); font-weight: 500; }
+  .tip code { font-family: var(--mono); font-size: 10px; color: var(--code); overflow-wrap: anywhere; }
+  .tip p + p { margin-top: 6px; }
+  .preset-row .btn { padding: 3px 8px; font-size: 11px; }
+  .setting-section {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  #settings-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Tabs ── */
+  /* Folder tabs: they sit on the toolbar's bottom edge (the negative margin
+     covers its padding + border), and the active one takes the colour of the
+     strip below with no bottom border, so it reads as joined to its content. */
+  #tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin-right: auto;
+    align-self: flex-end;
+    margin-bottom: -9px;
+  }
+  .tab {
+    position: relative;
+    padding: 6px 18px 7px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 7px 7px 0 0;
+    background: var(--tab-bg);
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--text2); background: var(--tab-hover); }
+  .tab.active {
+    z-index: 1;
+    padding: 9px 22px 9px;
+    color: var(--text);
+    border-color: var(--border2);
+    background: var(--bg2);
+    box-shadow: 0 1px 0 var(--bg2); /* paints over the toolbar's bottom border */
+  }
+  .hidden { display: none !important; }
+
+  /* ── Concat view ── */
+  #concat-view { display: flex; flex: 1; overflow: hidden; }
+  #concat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  #concat-list::-webkit-scrollbar { width: 4px; }
+  #concat-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .cc-dir { cursor: pointer; }
+  .cc-dir:hover { color: var(--text); }
+  .cc-file { padding-left: 10px; }
+  .cc-file input { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .cc-file .cc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cc-file .cc-size { color: var(--text3); font-size: 10px; flex-shrink: 0; }
+  .cc-order {
+    min-width: 16px;
+    font-size: 10px;
+    color: var(--on-accent);
+    background: var(--accent);
+    border-radius: 2px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  #concat-side {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+  }
+  #concat-selected { flex: 1; overflow-y: auto; }
+  .cs-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .cs-item .cs-num { color: var(--text3); width: 16px; flex-shrink: 0; }
+  .cs-item .cs-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cs-btn { color: var(--text3); cursor: pointer; padding: 0 3px; user-select: none; }
+  .cs-btn:hover { color: var(--text); }
+  .cs-btn.off { visibility: hidden; }
+  #concat-actions {
+    flex-shrink: 0;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #concat-actions .btn { justify-content: center; }
+  .cc-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  #concat-outdir {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    word-break: break-all;
+  }
+  #concat-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #concat-status.err { color: var(--danger); }
+
+  /* ── Help panel (strip under the tabs, content follows the active tab) ── */
+  #help-panel {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  #help-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+  }
+  #help-header:hover { color: var(--text2); }
+  #help-body {
+    max-height: 42vh;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+  #help-body::-webkit-scrollbar { width: 4px; }
+  #help-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .help-cols { display: grid; grid-template-columns: 1fr 1fr; }
+  .help-col { padding: 12px 16px 14px; min-width: 0; }
+  .help-col + .help-col { border-left: 1px solid var(--border); }
+  .help-col h4 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .help-col ol { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  .help-col li, .help-col p { font-size: 12px; line-height: 1.5; color: var(--text); }
+  .help-col p { color: var(--text2); margin-top: 8px; }
+  .help-col code, .help-col pre {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--code);
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  .help-col code { padding: 0 4px; overflow-wrap: anywhere; }
+  .help-col pre { padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-all; }
+  .help-col .note { color: var(--warn); }
+  @media (max-width: 760px) {
+    .help-cols { grid-template-columns: 1fr; }
+    .help-col + .help-col { border-left: none; border-top: 1px solid var(--border); }
+  }
+
+  /* empty state */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div id="toolbar">
+  <div id="server-menu-wrap">
+    <button id="gear-btn" title="Settings and server" aria-label="Settings and server menu" aria-haspopup="true" aria-expanded="false" onclick="toggleServerMenu(event)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/>
+        <circle cx="12" cy="12" r="7"/>
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>
+      </svg>
+    </button>
+    <div id="server-menu" class="hidden" role="menu">
+      <button role="menuitem" onclick="closeServerMenu(); openSettings()">Settings…</button>
+      <div class="menu-sep" role="separator"></div>
+      <div class="menu-hint">SERVER</div>
+      <button role="menuitem" onclick="serverAction('restart')">Reboot server</button>
+      <button role="menuitem" class="danger" onclick="serverAction('shutdown')">Shut down server</button>
+    </div>
+  </div>
+  <span id="app-title">Subtitle Studio</span>
+  <div id="tabs">
+    <button class="tab" data-tab="concat" onclick="switchTab('concat')">CONCAT</button>
+    <button class="tab active" data-tab="translate" onclick="switchTab('translate')">TRANSLATE</button>
+  </div>
+  <button class="btn" id="btn-mute" onclick="toggleMute()" title="Chime when the queue or a concat finishes"></button>
+  <button class="btn" id="btn-theme" onclick="toggleTheme()"></button>
+</div>
+
+<!-- Help panel -->
+<div id="help-panel">
+  <div id="help-header" onclick="toggleHelp()">
+    <span id="help-arrow">▸</span>
+    <span id="help-title">How to use: translate</span>
+    <span style="margin-left:auto">Mac (Apple Silicon) · PC (NVIDIA CUDA)</span>
+  </div>
+  <div id="help-body" class="hidden">
+
+    <div class="help-cols" data-help="translate">
+      <div class="help-col">
+        <h4>Mac (Apple Silicon): mlx-whisper + local llama.cpp</h4>
+        <ol>
+          <li>Install tools: <pre>brew install node ffmpeg llama.cpp</pre></li>
+          <li>Create the whisper venv:
+            <pre>python3 -m venv ~/mlx-whisper-env
+~/mlx-whisper-env/bin/pip install -U mlx-whisper silero-vad</pre></li>
+          <li>Get anime-whisper in MLX format (one time), with the venv's python and mlx-examples' <code>whisper/convert.py</code>:
+            <pre>python convert.py --torch-name-or-path litagin/anime-whisper --mlx-path ~/models/anime-whisper-mlx --dtype float16
+mv ~/models/anime-whisper-mlx/model.safetensors ~/models/anime-whisper-mlx/weights.safetensors</pre></li>
+          <li>Start the translator and leave it running:
+            <pre>llama-server -m ~/models/&lt;model&gt;.gguf --port 9931 -ngl 99 -c 16384 --jinja --reasoning-budget 0</pre>
+            Or fill in <b>Settings → llama-server auto-start</b>: the app starts it when needed and stops it on <b>Shut down server</b>.</li>
+          <li><b>Settings</b>: Backend <code>mlx-whisper</code>; executable <code>~/mlx-whisper-env/bin/mlx_whisper</code>;
+            --model: choose <b>anime-whisper</b> (this turns VAD segmentation on and clears the initial prompt).</li>
+          <li><b>Settings → Translation</b>: Two-stage, click <b>llama.cpp (local)</b> (<code>127.0.0.1:9931</code>), leave key and model blank.</li>
+          <li>Set the watch folder (below this panel), then <b>Start</b>. Each video gets <code>video.srt</code> (or <code>.ja.srt</code> + <code>.en.srt</code> with <b>Keep only English subtitles</b> unticked); 📂 opens its folder; <b>EN↻</b> re-translates from a kept <code>.ja.srt</code>. A chime plays when the queue is done.</li>
+        </ol>
+        <p class="note">Keep --initial-prompt blank with anime-whisper: its author says prompts make it hallucinate.</p>
+        <p>Alternative model: <b>whisper-ja-1.5B</b> (similar accuracy, about 3 GB, slower). Convert it the same way with
+          <code>--torch-name-or-path efwkjn/whisper-ja-1.5B --mlx-path ~/models/whisper-ja-1.5B-mlx</code>, then pick it in the dropdown.</p>
+      </div>
+      <div class="help-col">
+        <h4>PC (NVIDIA CUDA): whisper-ctranslate2 + local llama-server</h4>
+        <ol>
+          <li>Install Node 18+, Python 3, and ffmpeg (<code>winget install Gyan.FFmpeg</code>), then:
+            <pre>pip install -U whisper-ctranslate2 "ctranslate2&gt;=4.8.1" "av&lt;16"</pre>
+            (newer PyAV versions crash faster-whisper 1.2.1 while decoding audio).</li>
+          <li>Keep the <b>CUDA 12.x</b> runtime + cuDNN 9 libraries. CTranslate2 doesn't load on CUDA 13 yet
+            (<code>libcublas.so.12 not found</code>).</li>
+          <li>Get anime-whisper in CTranslate2 format (one time):
+            <pre>pip install transformers torch
+ct2-transformers-converter --model litagin/anime-whisper --output_dir ~/models/anime-whisper-ct2 --copy_files preprocessor_config.json --quantization float16
+hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-whisper-ct2</pre>
+            The <code>tokenizer.json</code> step is required: without it faster-whisper uses the wrong tokenizer and outputs gibberish.</li>
+          <li><b>Settings</b>: Backend <code>whisper-ctranslate2</code>; --device <code>cuda</code>;
+            --compute_type <code>int8_float16</code> (float16 garbles output on RTX 50-series; not float32);
+            --model: choose <b>anime-whisper</b> (turns VAD segmentation on, clears the initial prompt).</li>
+          <li>Install llama.cpp (<code>winget install llama.cpp</code>); <code>llama-server --list-devices</code> must show the GPU, otherwise use a CUDA build from llama.cpp's GitHub releases. Get an instruction-tuned ~27B <code>.gguf</code> (Qwen or Gemma, Q4–Q6).</li>
+          <li><b>Settings → Translation</b>: Two-stage, click <b>llama.cpp (local)</b>, then under <b>llama-server auto-start</b> set the executable
+            (e.g. <code>C:\llama-cuda\llama-server.exe</code>) and pick the model. <b>Save &amp; test translation</b> starts it and translates a sample line;
+            the app starts and stops llama-server from then on.
+            (Cloud alternative: click <b>OpenRouter</b>, paste your API key and a model id.)</li>
+          <li>Set the watch folder (below this panel), then <b>Start</b>. Outputs and <b>EN↻</b> work the same as on the Mac.</li>
+        </ol>
+        <p class="note">Keep --initial-prompt blank with anime-whisper: its author says prompts make it hallucinate. It also needs VAD segmentation on: it has no timestamps, and the plain CLI crashes on it.</p>
+        <p>Alternative models (pick them in the --model dropdown):
+          <b>whisper-ja-1.5B</b> (similar accuracy, about 3 GB, slower), already converted: <code>hf download TransWithAI/whisper-ja-1.5B-ct2 --local-dir ~/models/whisper-ja-1.5B-ct2</code>;
+          <b>whisper-ja-anime-v0.3</b> (experimental):
+          <code>ct2-transformers-converter --model efwkjn/whisper-ja-anime-v0.3 --output_dir ~/models/whisper-ja-anime-v0.3-ct2 --copy_files tokenizer.json preprocessor_config.json --quantization float16</code>;
+          <b>kotoba-whisper v2.0</b> (fast): <code>hf download kotoba-tech/kotoba-whisper-v2.0-faster --local-dir ~/models/kotoba-whisper-v2.0-faster</code>
+          (v2.1 and v2.2 are the same model plus punctuation/speaker steps that only run in Hugging Face's own pipeline).</p>
+      </div>
+    </div>
+
+    <div class="help-cols hidden" data-help="concat">
+      <div class="help-col">
+        <h4>Mac (Apple Silicon)</h4>
+        <ol>
+          <li>Install ffmpeg: <pre>brew install ffmpeg</pre></li>
+          <li>Browse to a folder on the left (click folders, <b>..</b> goes up) and tick the videos <b>in playback order</b>.</li>
+          <li>Reorder on the right with ▲ ▼, and remove with ✕.</li>
+          <li>Edit the output name if you like (defaults to <code>a+b.mp4</code>), then <b>Concat</b>.</li>
+        </ol>
+        <p>The output is saved next to the first selected file. If it's inside the watch folder, it's added to the Translate queue automatically.</p>
+      </div>
+      <div class="help-col">
+        <h4>PC (NVIDIA CUDA)</h4>
+        <ol>
+          <li>Install ffmpeg and make sure <code>ffmpeg</code> / <code>ffprobe</code> are on PATH:
+            <pre>winget install Gyan.FFmpeg</pre></li>
+          <li>Same steps as on the Mac: pick files in order, reorder, name, <b>Concat</b>.</li>
+        </ol>
+        <p>Concat uses stream copy (no re-encode), so it's near-instant and uses no GPU on either machine.
+          All parts must share codec, resolution and frame rate (e.g. pieces of one download).
+          <b>Cancel</b> deletes the partial file.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Left panel -->
+  <div id="left">
+    <div id="folder-bar">
+      <label>WATCH FOLDER</label>
+      <input id="folder-input" type="text" placeholder="C:\Videos\Japanese" onkeydown="onFolderKey(event)" />
+      <button class="btn" onclick="applyFolder()">Apply</button>
+    </div>
+
+    <div id="file-tree"></div>
+
+    <div id="current-job">
+      <div id="current-label">NOW TRANSLATING</div>
+      <div id="current-filename">—</div>
+      <div id="progress-wrap"><div id="progress-bar"></div></div>
+      <div id="progress-meta">
+        <span id="prog-seg">—</span>
+        <span id="prog-time"></span>
+        <span id="prog-pct">0%</span>
+      </div>
+    </div>
+
+    <div id="log-panel">
+      <div id="log-resize-handle"></div>
+      <div id="log-header" onclick="toggleLog()">
+        <span>▸</span>
+        <span id="log-toggle-label">OUTPUT LOG</span>
+        <span id="log-filter"></span>
+        <span id="log-line-count" style="margin-left:auto;color:var(--text3)"></span>
+      </div>
+      <div id="log-body"></div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="pane-resizer" data-key="queuePaneWidth" title="Drag to resize · double-click to reset"></div>
+  <div id="right">
+    <!-- Queue controls: always all four, disabled when they don't apply, so
+         the row never changes shape (its width sets the pane's minimum) -->
+    <div id="queue-controls" class="queue-controls">
+      <button class="btn primary" id="btn-start" onclick="apiStart()">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="1,0 10,5 1,10"/></svg>
+        Start
+      </button>
+      <button class="btn" id="btn-pause" onclick="apiPause()">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="0" width="3.5" height="10" rx="1"/><rect x="6.5" y="0" width="3.5" height="10" rx="1"/></svg>
+        Pause
+      </button>
+      <button class="btn" id="btn-resume" style="display:none" onclick="apiResume()">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="1,0 10,5 1,10"/></svg>
+        Resume
+      </button>
+      <button class="btn danger" id="btn-stop" onclick="apiStop()" title="Stop the current job and the queue">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="0" width="10" height="10" rx="1.5"/></svg>
+        Stop
+      </button>
+      <button class="btn" id="btn-clear-done" onclick="clearDone()" title="Remove finished videos from the queue">Clear done</button>
+    </div>
+    <div id="queue-header">
+      <span>Queue</span>
+      <span id="queue-count">0 jobs</span>
+    </div>
+    <div id="queue-tools">
+      <label title="Hide finished videos in the queue and the folder tree"><input type="checkbox" id="hide-done" onchange="toggleHideDone()" /> hide done</label>
+      <button class="link-btn" id="btn-retry-errors" style="display:none" onclick="retryErrors()"></button>
+      <span id="queue-eta"></span>
+    </div>
+    <div id="queue-list"></div>
+  </div>
+
+</div>
+
+<!-- Concat view -->
+<div id="concat-view" class="hidden">
+  <div id="concat-left">
+    <div id="concat-folder-bar">
+      <label>FOLDER</label>
+      <input id="concat-folder" class="setting-input" style="flex:1" type="text" onkeydown="if(event.key==='Enter')loadConcatFolder(this.value.trim())" />
+      <button class="btn" onclick="loadConcatFolder(document.getElementById('concat-folder').value.trim())">Load</button>
+    </div>
+    <div id="concat-list"></div>
+  </div>
+
+  <div class="pane-resizer" data-key="concatPaneWidth" title="Drag to resize · double-click to reset"></div>
+  <div id="concat-side">
+    <div id="concat-header">
+      <span>Concat order</span>
+      <span id="concat-count" style="color:var(--text2)">0 selected</span>
+    </div>
+    <div id="concat-selected"></div>
+    <div id="concat-actions">
+      <button class="btn primary" id="btn-concat" onclick="apiConcat()" disabled>Concat</button>
+      <span class="cc-label">Output file name</span>
+      <input class="setting-input" id="concat-name" type="text" placeholder="combined.mp4" oninput="concat.nameEdited = this.value.trim() !== ''" />
+      <div id="concat-outdir"></div>
+      <div id="concat-progress" class="hidden">
+        <div id="concat-progress-wrap"><div id="concat-bar" style="height:100%;width:0%;background:var(--text2);transition:width 0.5s linear"></div></div>
+      </div>
+      <div id="concat-status"></div>
+      <button class="btn danger hidden" id="btn-concat-cancel" onclick="apiConcatCancel()">Cancel</button>
+      <button class="btn hidden" id="btn-concat-reveal" onclick="revealPath('/api/concat/reveal')" title="Open its folder with the joined video selected">📂 Show file</button>
+    </div>
+  </div>
+</div>
+
+<!-- Server stopped / restarting -->
+<div id="server-overlay" class="hidden">
+  <div>
+    <div id="server-overlay-title"></div>
+    <div id="server-overlay-text"></div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<!-- Subtitle preview -->
+<div id="subs-overlay" onclick="if (event.target === this) closeSubs()">
+  <div id="subs-modal">
+    <div class="modal-header">
+      <span id="subs-title">subtitles</span>
+      <button class="btn" id="subs-reveal" style="margin-left:auto;margin-right:14px" onclick="revealPath(`/api/queue/${subsItemId}/reveal`)" title="Open its folder with the subtitle file selected">📂 Open folder</button>
+      <span id="subs-close" style="cursor:pointer;color:var(--text3);font-size:16px" onclick="closeSubs()">✕</span>
+    </div>
+    <div id="subs-body"></div>
+  </div>
+</div>
+
+<div id="settings-overlay">
+  <div id="settings-modal">
+    <div id="settings-header">
+      <span>settings</span>
+      <span id="settings-close" onclick="closeSettings()">✕</span>
+    </div>
+    <div id="settings-body">
+      <div class="setting-section">General</div>
+      <div class="setting-row">
+        <span class="setting-label">Watch folder</span>
+        <input class="setting-input" id="s-folder" type="text" />
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Backend</span>
+        <select class="setting-input" id="s-backend" onchange="onBackendChange()">
+          <option value="ctranslate2">whisper-ctranslate2 (NVIDIA CUDA / CPU)</option>
+          <option value="mlx">mlx-whisper (Apple Silicon GPU)</option>
+        </select>
+      </div>
+      <div class="setting-row" id="row-executable-ct2">
+        <span class="setting-label">Whisper executable</span>
+        <input class="setting-input" id="s-executable" type="text" placeholder="whisper-ctranslate2" />
+      </div>
+      <div class="setting-row" id="row-executable-mlx">
+        <span class="setting-label">mlx_whisper executable</span>
+        <input class="setting-input" id="s-mlx-executable" type="text" placeholder="mlx_whisper" />
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Server port</span>
+        <input class="setting-input" id="s-port" type="text" inputmode="numeric" placeholder="3939" />
+      </div>
+      <div class="setting-hint" id="s-port-hint">Takes effect after gear (top left) → Reboot server. Blank = 3939.</div>
+      <div class="setting-row">
+        <span class="setting-label">Python (VAD script)</span>
+        <input class="setting-input" id="s-python" type="text" placeholder="auto: python next to the whisper executable" />
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Auto-start</span>
+        <label class="setting-check"><input type="checkbox" id="s-autoStart" /> Start automatically when new videos appear in the watch folder</label>
+      </div>
+      <div class="setting-hint">Only videos added while the server runs; restarting the server doesn't start a batch.</div>
+      <div class="setting-row">
+        <span class="setting-label">Notifications</span>
+        <label class="setting-check"><input type="checkbox" id="s-notify" onchange="onNotifyToggle()" /> Desktop notification when the queue finishes</label>
+      </div>
+      <div class="setting-hint" id="s-notify-hint">Saved in this browser. The chime is toggled with the bell button in the toolbar.</div>
+
+      <div class="setting-section" id="section-ct2">Transcription (whisper-ctranslate2)</div>
+      <div class="ct2-params">
+        <div class="setting-row">
+          <span class="setting-label">--model <span class="info" tabindex="0">ⓘ<span class="tip">
+            <p><b>Installing a model on the PC</b></p>
+            <p>Stock names (<code>large-v3</code>, <code>large-v2</code>…) download by themselves. Anything else must be a <b>CTranslate2 folder</b> saved under <code>~/models/&lt;name&gt;</code> (<code>C:\Users\&lt;you&gt;\models\&lt;name&gt;</code>). Choose <b>Custom</b> and enter that folder.</p>
+            <p>Already CTranslate2 on Hugging Face (names ending <code>-ct2</code> / <code>-faster</code>):<br><code>hf download &lt;repo&gt; --local-dir ~/models/&lt;name&gt;</code></p>
+            <p>A regular (Transformers) whisper model:<br><code>ct2-transformers-converter --model &lt;repo&gt; --output_dir ~/models/&lt;name&gt; --copy_files preprocessor_config.json --quantization float16</code></p>
+            <p>The folder <b>must contain tokenizer.json</b>. If it doesn't, copy the one from <code>openai/whisper-large-v3</code> (for large-v3-based models such as anime-whisper); without it the output is gibberish.</p>
+            <p>Models without timestamps (anime-whisper) need <b>VAD segmentation = True</b>. Qwen3-ASR is not a whisper model and won't work here.</p>
+          </span></span></span>
+          <div class="model-pick">
+            <select class="setting-input" id="s-model-preset" onchange="onModelPreset('')">
+              <option value="~/models/anime-whisper-ct2" data-vad="True">anime-whisper: anime dialogue (local, needs VAD)</option>
+              <option value="~/models/whisper-ja-1.5B-ct2" data-vad="True">whisper-ja-1.5B: Japanese, large-v3 fine-tune (local, slower)</option>
+              <option value="~/models/whisper-ja-anime-v0.3-ct2" data-vad="True">whisper-ja-anime-v0.3: anime, turbo fine-tune (local, experimental)</option>
+              <option value="~/models/kotoba-whisper-v2.0-faster">kotoba-whisper v2.0 (= v2.1/v2.2 here): Japanese, fast (local)</option>
+              <option value="large-v3">whisper large-v3 (stock)</option>
+              <option value="large-v2">whisper large-v2 (stock)</option>
+              <option value="">Custom…</option>
+            </select>
+            <input class="setting-input" id="s-model" placeholder="large-v3 or a model folder" oninput="syncModelPreset('')" />
+          </div>
+        </div>
+        <div class="setting-row"><span class="setting-label">--device</span><input class="setting-input" id="s-device" placeholder="cuda" /></div>
+        <div class="setting-row"><span class="setting-label">--compute_type</span><input class="setting-input" id="s-compute_type" /></div>
+        <div class="setting-row"><span class="setting-label">--language</span><input class="setting-input" id="s-language" /></div>
+        <div class="setting-row"><span class="setting-label">--task</span><input class="setting-input" id="s-task" /></div>
+        <div class="setting-hint">Ignored in two-stage mode (always transcribe); translate only applies in single-stage mode.</div>
+        <div class="setting-row"><span class="setting-label">--initial_prompt</span><input class="setting-input" id="s-initial_prompt" /></div>
+        <div class="setting-row"><span class="setting-label">VAD segmentation</span><input class="setting-input" id="s-vad_segmentation" placeholder="False" /></div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="setting-row"><span class="setting-label">--beam_size</span><input class="setting-input" id="s-beam_size" /></div>
+          <div class="setting-row"><span class="setting-label">--temperature</span><input class="setting-input" id="s-temperature" /></div>
+          <div class="setting-row"><span class="setting-label">--no_speech_threshold</span><input class="setting-input" id="s-no_speech_threshold" /></div>
+          <div class="setting-row"><span class="setting-label">--vad_threshold</span><input class="setting-input" id="s-vad_threshold" /></div>
+          <div class="setting-row"><span class="setting-label">--vad_min_speech_duration_ms</span><input class="setting-input" id="s-vad_min_speech_duration_ms" /></div>
+          <div class="setting-row"><span class="setting-label">--vad_min_silence_duration_ms</span><input class="setting-input" id="s-vad_min_silence_duration_ms" /></div>
+          <div class="setting-row"><span class="setting-label">VAD max segment s</span><input class="setting-input" id="s-vad_max_segment_s" placeholder="15" /></div>
+          <div class="setting-row"><span class="setting-label">VAD speech padding ms</span><input class="setting-input" id="s-vad_speech_pad_ms" placeholder="400" /></div>
+          <div class="setting-row"><span class="setting-label">--repetition_penalty</span><input class="setting-input" id="s-repetition_penalty" placeholder="1.0 (off)" /></div>
+          <div class="setting-row"><span class="setting-label">--no_repeat_ngram_size</span><input class="setting-input" id="s-no_repeat_ngram_size" placeholder="0 (off)" /></div>
+          <div class="setting-hint">Padding, repetition penalty and no-repeat n-gram apply with VAD segmentation. The last two stop "ああああ…" loops on long cries or shouts (try 1.5 and 3).</div>
+        </details>
+        <div class="setting-hint">VAD segmentation runs scripts/vad_transcribe.py with faster-whisper: each stretch of speech (found with the --vad_* settings under Advanced) is transcribed separately. Required for anime-whisper, which has no timestamps.</div>
+      </div>
+
+      <div class="setting-section" id="section-mlx">Transcription (mlx-whisper)</div>
+      <div class="mlx-params">
+        <div class="setting-row">
+          <span class="setting-label">--model <span class="info" tabindex="0">ⓘ<span class="tip">
+            <p><b>Installing a model on the Mac</b></p>
+            <p>Hugging Face repos already in MLX format (e.g. <code>mlx-community/whisper-large-v3-mlx</code>) download by themselves to <code>~/.cache/huggingface</code>.</p>
+            <p>Any other whisper model: convert it into <code>~/models/&lt;name&gt;</code> with mlx-examples' <code>whisper/convert.py</code> (run with the mlx venv's python):<br><code>python convert.py --torch-name-or-path &lt;repo&gt; --mlx-path ~/models/&lt;name&gt; --dtype float16</code><br>then rename <code>model.safetensors</code> to <code>weights.safetensors</code>. Choose <b>Custom</b> and enter the folder.</p>
+            <p>Models without timestamps (anime-whisper) need <b>VAD segmentation = True</b>. Qwen3-ASR is not a whisper model and won't work here.</p>
+          </span></span></span>
+          <div class="model-pick">
+            <select class="setting-input" id="s-mlx-model-preset" onchange="onModelPreset('mlx-')">
+              <option value="~/models/anime-whisper-mlx" data-vad="True">anime-whisper: anime dialogue (local, needs VAD)</option>
+              <option value="~/models/whisper-ja-1.5B-mlx" data-vad="True">whisper-ja-1.5B: Japanese, large-v3 fine-tune (local, slower)</option>
+              <option value="~/models/kotoba-whisper-v2.0-mlx">kotoba-whisper v2.0: Japanese, fast (local)</option>
+              <option value="mlx-community/whisper-large-v3-mlx">whisper large-v3 (auto-download)</option>
+              <option value="mlx-community/whisper-large-v2-mlx">whisper large-v2 (auto-download)</option>
+              <option value="">Custom…</option>
+            </select>
+            <input class="setting-input" id="s-mlx-model" placeholder="HF repo id or a model folder" oninput="syncModelPreset('mlx-')" />
+          </div>
+        </div>
+        <div class="setting-row"><span class="setting-label">--language</span><input class="setting-input" id="s-mlx-language" /></div>
+        <div class="setting-row"><span class="setting-label">--task</span><input class="setting-input" id="s-mlx-task" /></div>
+        <div class="setting-hint">Ignored in two-stage mode (always transcribe); translate only applies in single-stage mode.</div>
+        <div class="setting-row"><span class="setting-label">--initial-prompt</span><input class="setting-input" id="s-mlx-initial_prompt" /></div>
+        <div class="setting-row"><span class="setting-label">VAD segmentation</span><input class="setting-input" id="s-mlx-vad_segmentation" placeholder="True" /></div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="setting-row"><span class="setting-label">--temperature</span><input class="setting-input" id="s-mlx-temperature" /></div>
+          <div class="setting-row"><span class="setting-label">--no-speech-threshold</span><input class="setting-input" id="s-mlx-no_speech_threshold" /></div>
+          <div class="setting-row"><span class="setting-label">--word-timestamps</span><input class="setting-input" id="s-mlx-word_timestamps" /></div>
+          <div class="setting-row"><span class="setting-label">--fp16</span><input class="setting-input" id="s-mlx-fp16" /></div>
+          <div class="setting-row"><span class="setting-label">VAD threshold</span><input class="setting-input" id="s-mlx-vad_threshold" placeholder="0.28" /></div>
+          <div class="setting-row"><span class="setting-label">VAD min speech ms</span><input class="setting-input" id="s-mlx-vad_min_speech_duration_ms" placeholder="100" /></div>
+          <div class="setting-row"><span class="setting-label">VAD min silence ms</span><input class="setting-input" id="s-mlx-vad_min_silence_duration_ms" placeholder="300" /></div>
+          <div class="setting-row"><span class="setting-label">VAD max segment s</span><input class="setting-input" id="s-mlx-vad_max_segment_s" placeholder="15" /></div>
+          <div class="setting-row"><span class="setting-label">VAD speech padding ms</span><input class="setting-input" id="s-mlx-vad_speech_pad_ms" placeholder="400" /></div>
+        </details>
+        <div class="setting-hint">VAD segmentation (Silero, needs <code>pip install silero-vad</code> in the mlx venv) transcribes each stretch of speech separately. Required for anime-whisper, which has no timestamps; --no-speech-threshold and --word-timestamps are unused in this mode. Leave --initial-prompt blank with anime-whisper.</div>
+      </div>
+
+      <div class="setting-section">Translation (LLM)</div>
+      <div class="setting-row">
+        <span class="setting-label">Mode</span>
+        <select class="setting-input" id="s-tr-enabled" onchange="updateSettingsVisibility()">
+          <option value="true">Two-stage: whisper transcribes Japanese, LLM translates</option>
+          <option value="false">Single-stage: whisper translates (--task above)</option>
+        </select>
+      </div>
+      <div class="setting-hint">Two-stage writes video.ja.srt and video.en.srt (just video.srt with Keep only English, below) and always runs whisper with --task transcribe. Single-stage writes video.srt as before.</div>
+      <div class="settings-group" id="tr-llm-fields">
+      <div class="setting-row">
+        <span class="setting-label">Keep only English subtitles</span>
+        <label class="setting-check"><input type="checkbox" id="s-tr-englishOnly" /> Delete video.ja.srt and rename video.en.srt to video.srt</label>
+      </div>
+      <div class="setting-hint">Leaves one subtitle file next to each video, named so players load it automatically (an existing video.srt is replaced). If translation fails or is stopped, the .ja.srt is kept so a retry skips transcription. Deleted transcripts can't be re-translated with EN↻; untick this to keep .ja.srt and .en.srt for comparing models.</div>
+      <div class="setting-row">
+        <span class="setting-label">Endpoint preset</span>
+        <div class="preset-row">
+          <button class="btn" type="button" onclick="setEndpoint('https://openrouter.ai/api/v1')">OpenRouter</button>
+          <button class="btn" type="button" onclick="setEndpoint('http://127.0.0.1:9931/v1')">llama.cpp (local)</button>
+        </div>
+      </div>
+      <div class="setting-row"><span class="setting-label">Base URL</span><input class="setting-input" id="s-tr-baseUrl" placeholder="https://openrouter.ai/api/v1" oninput="updateSettingsVisibility()" /></div>
+      <div class="setting-row" id="row-tr-apiKey"><span class="setting-label">API key</span><input class="setting-input" id="s-tr-apiKey" type="password" autocomplete="off" /></div>
+      <div class="setting-row"><span class="setting-label">Model</span><input class="setting-input" id="s-tr-model" placeholder="OpenRouter model id (llama-server: optional)" /></div>
+      <div class="setting-row"><span class="setting-label">Lines per request</span><input class="setting-input" id="s-tr-batchSize" placeholder="30" /></div>
+      <div class="setting-row"><span class="setting-label">Context lines</span><input class="setting-input" id="s-tr-contextLines" placeholder="5" /></div>
+      <div class="setting-row"><span class="setting-label">Temperature</span><input class="setting-input" id="s-tr-temperature" placeholder="0.3" /></div>
+      <div class="setting-row top">
+        <span class="setting-label">Style prompt</span>
+        <textarea class="setting-input" id="s-tr-stylePrompt" rows="5"></textarea>
+      </div>
+      <div class="setting-hint">Leave the style prompt blank to use the built-in one (shown as the placeholder). The line-format rules are always added.</div>
+      <div class="setting-row">
+        <span class="setting-label">Test</span>
+        <div><button class="btn" type="button" id="btn-tr-test" onclick="testTranslation()">Save &amp; test translation</button></div>
+      </div>
+      <div id="tr-test-result"></div>
+
+      <div class="settings-group" id="llama-section">
+      <div class="setting-section">llama-server auto-start (local Base URL only)</div>
+      <div class="setting-row"><span class="setting-label">Currently running</span><div id="llama-status" class="llama-status">checking...</div></div>
+      <div class="setting-row"><span class="setting-label">llama-server executable</span><input class="setting-input" id="s-tr-llamaExecutable" placeholder="blank = start it yourself" /></div>
+      <div class="setting-row">
+        <span class="setting-label">Model (.gguf)</span>
+        <div class="model-pick">
+          <select class="setting-input" id="s-tr-llamaModel-preset" onchange="onLlamaModelPreset()">
+            <option value="">Custom path…</option>
+          </select>
+          <input class="setting-input" id="s-tr-llamaModel" placeholder="~/models/model.gguf" oninput="syncLlamaModelPreset()" />
+        </div>
+      </div>
+      <div class="setting-hint">Lists .gguf files in your Hugging Face cache, ~/models and the selected model's folder. A new pick loads before the next video's translation (llama-server restarts), so EN↻ with another model compares them.</div>
+      <div class="setting-row"><span class="setting-label">Extra args</span><input class="setting-input" id="s-tr-llamaArgs" placeholder="-ngl 99 -c 16384 --jinja --reasoning-budget 0" /></div>
+      <div class="setting-row"><span class="setting-label">Model load wait (s)</span><input class="setting-input" id="s-tr-llamaLoadWait" placeholder="15" /></div>
+      <div class="setting-hint">If nothing answers at the Base URL when a video reaches translation, the app starts llama-server with these settings (--host/--port come from the Base URL) and waits up to the load wait for the model. Shut down server also stops a llama-server running on that port; Restart leaves it loaded.</div>
+      </div>
+      </div>
+    </div>
+    <div id="settings-footer">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── State ──
+  let state = { isRunning: false, isPaused: false, queue: [], config: {} };
+  let logVisible = false;
+  let ws;
+  let logLines = [];
+  let lastRunningId = null; // opens the log panel when a new job starts
+  let ranJob = false;       // a job ran since Start, so a drained queue gets a chime
+  let queueDoneTitle = false; // tab title says "Queue done" until the next job starts
+  let logFilterId = null;   // queue item the log is filtered to (null = all output)
+  let itemLog = [];         // that item's lines
+
+  // Per-browser preferences (storage can be unavailable; defaults then apply)
+  const pref = (key, fallback) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch (e) { return fallback; } };
+  const setPref = (key, on) => { try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) { /* storage unavailable */ } };
+  let muted = pref('chimeMuted', false);
+  let hideDone = pref('hideDone', false);
+
+  // ── Chime ──
+  // Browsers only allow audio after a click or key press on the page, so the
+  // AudioContext is created on the first one (pressing Start counts).
+  let audioCtx = null;
+  function unlockAudio() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { /* no Web Audio */ }
+  }
+  ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, unlockAudio));
+
+  // Two bell strikes (ding-dong), each a few decaying inharmonic partials
+  function playChime() {
+    if (muted || !audioCtx || audioCtx.state !== 'running') return;
+    const t0 = audioCtx.currentTime;
+    [[880, 0], [659.25, 0.28]].forEach(([freq, at]) => {
+      [[1, 0.5, 1.6], [2.76, 0.18, 0.7], [5.4, 0.08, 0.35]].forEach(([mult, gain, decay]) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.frequency.value = freq * mult;
+        g.gain.setValueAtTime(0, t0 + at);
+        g.gain.linearRampToValueAtTime(gain * 0.4, t0 + at + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + decay);
+        osc.connect(g).connect(audioCtx.destination);
+        osc.start(t0 + at);
+        osc.stop(t0 + at + decay + 0.05);
+      });
+    });
+  }
+
+  // ── WebSocket ──
+  function connectWS() {
+    ws = new WebSocket(`ws://${location.host}`);
+    ws.onmessage = e => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.type === 'state') {
+        // Queue drained: it stopped running with nothing left to do. Stop leaves
+        // the killed item 'running' in this message, so it stays silent.
+        const drained = state.isRunning && !msg.isRunning && ranJob
+          && !msg.queue.some(i => i.status === 'queued' || i.status === 'running');
+        if (!msg.isRunning) ranJob = false;
+        if (drained) { playChime(); notifyQueueDone(msg.queue); queueDoneTitle = true; }
+        state.isRunning = msg.isRunning;
+        state.isPaused = msg.isPaused;
+        state.queue = msg.queue;
+        render();
+      } else if (msg.type === 'progress') {
+        const item = state.queue.find(i => i.id === msg.id);
+        if (item) {
+          item.progress = msg.progress;
+          item.segment = msg.segment;
+          item.totalSegments = msg.totalSegments;
+          item.stage = msg.stage;
+          renderProgress(item);
+          renderQueue();
+        }
+      } else if (msg.type === 'log') {
+        appendLog(msg.line, msg.id);
+      } else if (msg.type === 'concat') {
+        onConcatMessage(msg.job);
+      }
+    };
+    ws.onclose = () => { if (!serverGone) setTimeout(reconnect, 2000); };
+  }
+
+  // ── Init ──
+  async function init() {
+    const res = await fetch('/api/state');
+    const data = await res.json();
+    state = { isRunning: data.isRunning, isPaused: data.isPaused, queue: data.queue, config: data.config };
+    if (data.config.watchFolder) document.getElementById('folder-input').value = data.config.watchFolder;
+    concat.job = data.concat;
+    // Backfill the running job's output, which streamed before this page loaded
+    const running = state.queue.find(i => i.status === 'running');
+    if (running) {
+      try {
+        const r = await fetch(`/api/log/${running.id}`);
+        if (r.ok) logLines = (await r.json()).log.slice(-2000).map(line => ({ id: running.id, line }));
+      } catch {}
+      document.getElementById('log-line-count').textContent = logLines.length + ' lines';
+    }
+    render();
+    renderConcatJob();
+    connectWS();
+  }
+
+  // ── Render ──
+  function render() {
+    renderToolbar();
+    renderTree();
+    renderQueue();
+    const running = state.queue.find(i => i.status === 'running');
+    // Auto-open once per job, so collapsing it mid-job sticks
+    if (running && running.id !== lastRunningId && !logVisible) toggleLog();
+    if (running && state.isRunning) { ranJob = true; queueDoneTitle = false; }
+    lastRunningId = running ? running.id : null;
+    if (running) renderProgress(running);
+    else {
+      document.getElementById('current-job').classList.remove('visible');
+    }
+    renderQueueTools();
+    updateTitle();
+  }
+
+  // ── Time ──
+  function fmtDur(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+    return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+  }
+
+  // Remaining time for the running item's current stage, once it's 5% in
+  function stageRemaining(item) {
+    const from = item.stageStartedAt || item.startedAt; // single-stage sets no stage time
+    if (!from || item.progress < 5 || item.progress >= 100) return null;
+    const spent = Date.now() - from;
+    return spent / item.progress * (100 - item.progress);
+  }
+
+  // Rest of the queue: average time per video finished this session × videos left
+  function queueRemaining() {
+    const finished = state.queue.filter(i => i.status === 'done' && i.startedAt && i.finishedAt);
+    if (!finished.length) return null;
+    const avg = finished.reduce((sum, i) => sum + (i.finishedAt - i.startedAt), 0) / finished.length;
+    const queued = state.queue.filter(i => i.status === 'queued').length;
+    const running = state.queue.find(i => i.status === 'running');
+    const current = running ? Math.max(0, avg - (Date.now() - running.startedAt)) : 0;
+    return queued * avg + current;
+  }
+
+  function renderTimes() {
+    const running = state.queue.find(i => i.status === 'running');
+    if (running && running.startedAt) {
+      const left = stageRemaining(running);
+      const stage = running.stage === 'translate' ? 'translation' : 'transcription';
+      document.getElementById('prog-time').textContent =
+        `elapsed ${fmtDur(Date.now() - running.startedAt)}` + (left !== null ? ` · ~${fmtDur(left)} left in ${stage}` : '');
+    }
+    const eta = queueRemaining();
+    document.getElementById('queue-eta').textContent = state.isRunning && eta !== null ? `~${fmtDur(eta)} left` : '';
+  }
+  setInterval(renderTimes, 1000);
+
+  // ── Tab title ──
+  function updateTitle() {
+    const running = state.queue.find(i => i.status === 'running');
+    const base = 'Subtitle Studio';
+    if (running) {
+      const stage = running.stage === 'translate' ? 'translating' : 'transcribing';
+      document.title = `${running.progress}% ${stage} · ${running.name} — ${base}`;
+    } else {
+      document.title = queueDoneTitle ? `✓ Queue done — ${base}` : base;
+    }
+  }
+
+  // ── Desktop notification ──
+  let runStartedAt = 0; // client clock; set when Start is pressed
+  function notifyQueueDone(queue) {
+    if (!pref('notifyDesktop', false) || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const ran = queue.filter(i => i.finishedAt && i.finishedAt >= runStartedAt - 1000);
+    const done = ran.filter(i => i.status === 'done').length;
+    const errors = ran.filter(i => i.status === 'error').length;
+    try {
+      new Notification('Subtitle Studio: queue done', {
+        body: `${done} done` + (errors ? `, ${errors} error${errors === 1 ? '' : 's'}` : ''),
+        tag: 'whisper-translate-queue'
+      });
+    } catch (e) { /* notifications unavailable */ }
+  }
+
+  async function onNotifyToggle() {
+    const box = document.getElementById('s-notify');
+    if (box.checked && 'Notification' in window && Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') box.checked = false;
+    }
+    setPref('notifyDesktop', box.checked);
+    renderNotifyHint();
+  }
+
+  function renderNotifyHint() {
+    const blocked = 'Notification' in window && Notification.permission === 'denied';
+    document.getElementById('s-notify-hint').textContent = blocked
+      ? 'The browser has blocked notifications for this page; allow them in the address bar\'s site settings.'
+      : 'Saved in this browser. The chime is toggled with the bell button in the toolbar.';
+  }
+
+  // ── Queue tools: hide done, retry errors, mute ──
+  function renderQueueTools() {
+    document.getElementById('hide-done').checked = hideDone;
+    const errors = state.queue.filter(i => i.status === 'error').length;
+    const btn = document.getElementById('btn-retry-errors');
+    btn.style.display = errors ? '' : 'none';
+    btn.textContent = `retry errors (${errors})`;
+    document.getElementById('btn-mute').textContent = muted ? '🔕' : '🔔';
+    document.getElementById('btn-mute').title = muted ? 'Chime is off (click to turn on)' : 'Chime is on (click to turn off)';
+    renderTimes();
+  }
+
+  function toggleHideDone() {
+    hideDone = document.getElementById('hide-done').checked;
+    setPref('hideDone', hideDone);
+    render();
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    setPref('chimeMuted', muted);
+    if (!muted) { unlockAudio(); playChime(); } // a sample, so you know it works
+    renderQueueTools();
+  }
+
+  // ── Day / night mode ── (<html data-theme="light">; the <head> script applies it on load)
+  function renderThemeButton() {
+    const light = document.documentElement.dataset.theme === 'light';
+    const btn = document.getElementById('btn-theme');
+    btn.textContent = light ? '🌙' : '☀️';
+    btn.title = light ? 'Night mode' : 'Day mode';
+  }
+
+  function toggleTheme() {
+    const light = document.documentElement.dataset.theme !== 'light';
+    if (light) document.documentElement.dataset.theme = 'light';
+    else delete document.documentElement.dataset.theme;
+    try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) { /* storage unavailable */ }
+    renderThemeButton();
+  }
+  renderThemeButton();
+
+  async function retryErrors() {
+    await fetch('/api/queue/retry-errors', { method: 'POST' });
+  }
+
+  function renderToolbar() {
+    const btnStart  = document.getElementById('btn-start');
+    const btnPause  = document.getElementById('btn-pause');
+    const btnResume = document.getElementById('btn-resume');
+    const { isRunning, isPaused } = state;
+    // All four stay visible; Pause and Resume share a slot
+    btnStart.disabled = isRunning;
+    btnPause.style.display = isPaused ? 'none' : '';
+    btnResume.style.display = isPaused ? '' : 'none';
+    btnPause.disabled = !isRunning;
+    btnResume.disabled = !isRunning;
+    document.getElementById('btn-stop').disabled = !isRunning;
+    document.getElementById('btn-clear-done').disabled = !state.queue.some(i => i.status === 'done');
+  }
+
+  function renderProgress(item) {
+    const job = document.getElementById('current-job');
+    if (!item || item.status !== 'running') { job.classList.remove('visible'); return; }
+    job.classList.add('visible');
+    const translating = item.stage === 'translate';
+    const twoStage = state.config.translation && state.config.translation.enabled;
+    document.getElementById('current-label').textContent =
+      translating ? 'NOW TRANSLATING (2/2)' : twoStage ? 'NOW TRANSCRIBING (1/2)' : 'NOW TRANSLATING';
+    document.getElementById('current-filename').textContent = item.filePath;
+    document.getElementById('progress-bar').style.width = item.progress + '%';
+    document.getElementById('prog-pct').textContent = item.progress + '%';
+    const unit = translating ? 'line' : 'segment';
+    if (item.totalSegments > 0) {
+      document.getElementById('prog-seg').textContent = `${unit} ${item.segment} / ${item.totalSegments}`;
+    } else {
+      document.getElementById('prog-seg').textContent = `${unit} ${item.segment}`;
+    }
+    renderTimes();
+    updateTitle();
+  }
+
+  // Group queue items by folder for tree view
+  function renderTree() {
+    const tree = document.getElementById('file-tree');
+    if (state.queue.length === 0) {
+      // Rebuilt as markup each time: a pre-existing node would be destroyed by
+      // the innerHTML assignment below on the first non-empty render.
+      tree.innerHTML = `<div id="empty-state">
+        <span>No mp4 files found</span>
+        <span style="color:var(--text3);font-size:10px;">Update the watch folder above</span>
+      </div>`;
+      return;
+    }
+
+    const groups = {};
+    state.queue.filter(item => !(hideDone && item.status === 'done')).forEach(item => {
+      const dir = item.filePath.replace(/[\\/][^\\/]+$/, '');
+      if (!groups[dir]) groups[dir] = [];
+      groups[dir].push(item);
+    });
+
+    let html = '';
+    for (const [dir, items] of Object.entries(groups)) {
+      const folderName = dir.split(/[\\/]/).pop();
+      html += `<div class="tree-folder">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.586a1 1 0 01.707.293L8.5 4H13.5A1.5 1.5 0 0115 5.5v7A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9z"/></svg>
+        ${escHtml(folderName)}
+      </div>`;
+      items.forEach(item => {
+        const cls = item.status === 'running' ? 'active' : item.status === 'done' ? 'done' : item.status === 'error' ? 'error' : '';
+        const dotCls = `dot-${item.status === 'running' ? 'running' : item.status === 'done' ? 'done' : item.status === 'error' ? 'error' : 'queued'}`;
+        html += `<div class="tree-file ${cls}" title="${escHtml(item.filePath)}">
+          <span class="status-dot ${dotCls}"></span>
+          ${escHtml(item.name)}
+        </div>`;
+      });
+    }
+    tree.innerHTML = html;
+  }
+
+  function renderQueue() {
+    const list = document.getElementById('queue-list');
+    const total = state.queue.length;
+    const hidden = hideDone ? state.queue.filter(i => i.status === 'done').length : 0;
+    document.getElementById('queue-count').textContent = total + (total === 1 ? ' job' : ' jobs')
+      + (hidden ? ` · ${hidden} hidden` : '');
+
+    if (total === 0) { list.innerHTML = ''; return; }
+
+    // Action icons stop the click so it doesn't also select the item
+    const act = (cls, title, call, text) =>
+      `<span class="${cls}" title="${title}" onclick="event.stopPropagation(); ${call}">${text}</span>`;
+
+    list.innerHTML = state.queue.filter(item => !(hideDone && item.status === 'done')).map(item => {
+      const activeCls = (item.status === 'running' ? 'active' : '') + (item.id === logFilterId ? ' selected' : '');
+      const nameCls = item.status === 'done' ? 'done' : item.status === 'error' ? 'error' : '';
+      const label = item.status === 'running' && item.stage
+        ? (item.stage === 'translate' ? 'translating' : 'transcribing')
+        : item.status;
+      const badge = `<span class="qi-badge badge-${item.status}">${label}</span>`;
+      const mini = item.status === 'running'
+        ? `<div class="qi-mini-bar"><div class="qi-mini-fill" style="width:${item.progress}%"></div></div>`
+        : '';
+      const pct = item.status === 'running' ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${item.progress}%</span>` : '';
+      const dir = item.filePath.replace(/[\\/][^\\/]+$/, '').split(/[\\/]/).pop();
+      const retry = item.status === 'error' ? act('qi-retry', 'Retry', `retryItem(${item.id})`, '↺') : '';
+      const canRetranslate = item.hasJa && (item.status === 'done' || item.status === 'error')
+        && state.config.translation && state.config.translation.enabled;
+      const retranslate = canRetranslate
+        ? act('qi-retranslate', 'Re-translate from the existing Japanese transcript', `retranslateItem(${item.id})`, 'EN↻') : '';
+      const view = item.status === 'done' || item.hasJa ? act('qi-view', 'View subtitles', `openSubs(${item.id})`, '👁') : '';
+      const folder = act('qi-view', 'Open folder (selects the subtitles)', `revealPath('/api/queue/${item.id}/reveal')`, '📂');
+      const took = item.status !== 'running' && item.startedAt && item.finishedAt
+        ? `<span class="qi-time">${fmtDur(item.finishedAt - item.startedAt)}</span>` : '';
+      const error = item.status === 'error' && item.lastError
+        ? `<div class="qi-error" title="${escHtml(item.lastError)}">${escHtml(item.lastError)}</div>` : '';
+      return `<div class="queue-item ${activeCls}" onclick="selectItem(${item.id})" title="Click to show this video's log">
+        <div class="qi-row">
+          <span class="qi-name ${nameCls}" title="${escHtml(item.filePath)}">${escHtml(item.name)}</span>
+          ${folder}
+          ${view}
+          ${retranslate}
+          ${retry}
+          ${act('qi-del', 'Remove', `removeItem(${item.id})`, '✕')}
+        </div>
+        <div class="qi-row">
+          ${badge}
+          ${took}
+          ${pct}
+        </div>
+        ${error}
+        <div class="qi-dir">${escHtml(dir)}</div>
+        ${mini}
+      </div>`;
+    }).join('');
+  }
+
+  function logLineClass(line) {
+    if (/error|traceback|exception|failed/i.test(line)) return 'log-err';
+    if (/warn|warning/i.test(line)) return 'log-warn';
+    if (/^\s*$/.test(line)) return 'log-dim';
+    return '';
+  }
+
+  // logLines holds { id, line } for every item; the panel shows either all of
+  // them or, after clicking a queue item, only that item's lines (itemLog)
+  const shownLines = () => logFilterId === null ? logLines.map(l => l.line) : itemLog;
+
+  function appendLog(line, id) {
+    logLines.push({ id, line });
+    if (logLines.length > 2000) logLines.shift();
+    if (logFilterId !== null) {
+      if (id !== logFilterId) return;
+      itemLog.push(line);
+    }
+    renderLogCount();
+    if (!logVisible) return;
+    const body = document.getElementById('log-body');
+    const div = document.createElement('div');
+    const cls = logLineClass(line);
+    if (cls) div.className = cls;
+    div.textContent = line;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderLogCount() {
+    document.getElementById('log-line-count').textContent = shownLines().length + ' lines';
+  }
+
+  function renderLogBody() {
+    const b = document.getElementById('log-body');
+    b.innerHTML = shownLines().map(l => {
+      const cls = logLineClass(l);
+      return cls ? `<div class="${cls}">${escHtml(l)}</div>` : `<div>${escHtml(l)}</div>`;
+    }).join('');
+    b.scrollTop = b.scrollHeight;
+  }
+
+  // Click a queue item: show just its log (the server keeps each item's lines);
+  // click it again, or the ✕ in the log header, for all output
+  async function selectItem(id) {
+    if (logFilterId === id) return clearLogFilter();
+    const item = state.queue.find(i => i.id === id);
+    try {
+      itemLog = (await (await fetch(`/api/log/${id}`)).json()).log || [];
+    } catch (e) { itemLog = []; }
+    logFilterId = id;
+    document.getElementById('log-filter').innerHTML = item
+      ? `· ${escHtml(item.name)}<span class="clear" title="Show all output" onclick="event.stopPropagation(); clearLogFilter()">✕</span>` : '';
+    renderLogCount();
+    if (logVisible) renderLogBody(); else toggleLog();
+    renderQueue();
+  }
+
+  function clearLogFilter() {
+    logFilterId = null;
+    itemLog = [];
+    document.getElementById('log-filter').innerHTML = '';
+    renderLogCount();
+    if (logVisible) renderLogBody();
+    renderQueue();
+  }
+
+  function toggleLog() {
+    logVisible = !logVisible;
+    const panel = document.getElementById('log-panel');
+    const label = document.getElementById('log-toggle-label');
+    const arrow = document.querySelector('#log-header span');
+    if (logVisible) {
+      const savedH = parseInt(localStorage.getItem('logPanelHeight') || '300', 10);
+      panel.style.height = savedH + 'px';
+      const b = document.getElementById('log-body');
+      b.style.display = '';
+      renderLogBody();
+      arrow.textContent = '▾';
+    } else {
+      panel.style.height = '28px';
+      const b = document.getElementById('log-body');
+      b.style.display = 'none';
+      b.innerHTML = '';
+      arrow.textContent = '▸';
+    }
+  }
+
+  // ── API calls ──
+  async function apiStart()  {
+    runStartedAt = Date.now();
+    await fetch('/api/start',  { method: 'POST' });
+    state.isRunning = true; state.isPaused = false; renderToolbar();
+  }
+  async function apiPause()  {
+    await fetch('/api/pause',  { method: 'POST' });
+    state.isPaused = true; renderToolbar();
+  }
+  async function apiResume() {
+    await fetch('/api/resume', { method: 'POST' });
+    state.isPaused = false; renderToolbar();
+  }
+  async function apiStop() {
+    const running = state.queue.find(i => i.status === 'running');
+    const detail = running
+      ? `\n\n${running.name} will be stopped. A finished Japanese transcript (.ja.srt) is kept, so Retry only translates.`
+      : '';
+    if (!confirm('Stop the queue?' + detail)) return;
+    await fetch('/api/stop', { method: 'POST' });
+  }
+
+  // ── Open folder ── (the server picks the file: subtitles, joined video…)
+  async function revealPath(url) {
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!res.ok) alert((await res.json()).error || 'Could not open the folder');
+    } catch (e) { alert('Could not open the folder: ' + e.message); }
+  }
+
+  // ── Subtitle preview ──
+  let subsItemId = null; // for its Open folder button
+  async function openSubs(id) {
+    subsItemId = id;
+    let subs;
+    try {
+      const res = await fetch(`/api/subs/${id}`);
+      subs = await res.json();
+      if (!res.ok) throw new Error(subs.error);
+    } catch (e) { alert('Could not load subtitles: ' + e.message); return; }
+    const en = subs.en || subs.srt || [];
+    const ja = subs.ja || [];
+    const rows = Math.max(en.length, ja.length);
+    const JA = /[぀-ヿ一-鿿]/;
+    const enLabel = 'English'; // .en.srt, or .srt (English only / single-stage)
+    const startOf = t => (t || '').split('-->')[0].trim().replace(/,\d+$/, '');
+    let html = `<table id="subs-table"><thead><tr><th>#</th><th>Time</th>${ja.length ? '<th>Japanese</th>' : ''}<th>${enLabel}</th></tr></thead><tbody>`;
+    for (let i = 0; i < rows; i++) {
+      const e = en[i], j = ja[i];
+      const untranslated = e && JA.test(e.text) ? ' class="untranslated" title="Still Japanese: the model dropped or refused this line"' : '';
+      html += `<tr${untranslated}><td class="num">${i + 1}</td><td class="time">${escHtml(startOf((e || j).time))}</td>`
+        + (ja.length ? `<td class="ja">${escHtml(j ? j.text : '')}</td>` : '')
+        + `<td class="en">${escHtml(e ? e.text : '')}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    if (!rows) html = '<p style="padding:16px;color:var(--text3);font-family:var(--mono);font-size:12px">No subtitle files found next to this video.</p>';
+    const parts = [subs.ja && '.ja.srt', subs.en && '.en.srt', subs.srt && '.srt'].filter(Boolean).join(' + ');
+    document.getElementById('subs-title').textContent = `${subs.name} · ${rows} lines${parts ? ' · ' + parts : ''}`;
+    document.getElementById('subs-body').innerHTML = html;
+    document.getElementById('subs-body').scrollTop = 0;
+    document.getElementById('subs-overlay').classList.add('open');
+  }
+
+  function closeSubs() {
+    document.getElementById('subs-overlay').classList.remove('open');
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('subs-overlay').classList.contains('open')) closeSubs();
+  });
+
+  async function clearDone() {
+    await fetch('/api/queue/clear-done', { method: 'POST' });
+    state.queue = state.queue.filter(i => i.status !== 'done');
+    render();
+  }
+  async function removeItem(id) {
+    await fetch(`/api/queue/${id}`, { method: 'DELETE' });
+    state.queue = state.queue.filter(i => i.id !== id);
+    render();
+  }
+
+  async function retryItem(id) {
+    await fetch(`/api/queue/${id}/retry`, { method: 'POST' });
+    const item = state.queue.find(i => i.id === id);
+    if (item) { item.status = 'queued'; item.progress = 0; }
+    render();
+  }
+
+  async function retranslateItem(id) {
+    const res = await fetch(`/api/queue/${id}/retranslate`, { method: 'POST' });
+    if (!res.ok) { alert((await res.json()).error); return; }
+    const item = state.queue.find(i => i.id === id);
+    if (item) { item.status = 'queued'; item.progress = 0; }
+    render();
+  }
+
+  function onFolderKey(e) { if (e.key === 'Enter') applyFolder(); }
+  async function applyFolder() {
+    const val = document.getElementById('folder-input').value.trim();
+    if (!val) return;
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ watchFolder: val })
+    });
+    // Re-fetch full state so the UI updates immediately regardless of WS timing
+    const res = await fetch('/api/state');
+    const data = await res.json();
+    state.isRunning = data.isRunning;
+    state.isPaused = data.isPaused;
+    state.queue = data.queue;
+    state.config = data.config;
+    document.getElementById('folder-input').value = data.config.watchFolder;
+    render();
+  }
+
+  // ── Settings ──
+  function onBackendChange() {
+    const backend = document.getElementById('s-backend').value;
+    const isMlx = backend === 'mlx';
+    document.getElementById('row-executable-ct2').style.display = isMlx ? 'none' : '';
+    document.getElementById('row-executable-mlx').style.display = isMlx ? '' : 'none';
+    document.getElementById('section-ct2').style.display = isMlx ? 'none' : '';
+    document.querySelector('.ct2-params').style.display = isMlx ? 'none' : '';
+    document.getElementById('section-mlx').style.display = isMlx ? '' : 'none';
+    document.querySelector('.mlx-params').style.display = isMlx ? '' : 'none';
+  }
+
+  function openSettings() {
+    const w = state.config.whisperArgs || {};
+    const m = state.config.mlxArgs || {};
+    document.getElementById('s-folder').value = state.config.watchFolder || '';
+    document.getElementById('s-backend').value = state.config.backend || 'ctranslate2';
+    document.getElementById('s-executable').value = state.config.whisperExecutable || '';
+    document.getElementById('s-mlx-executable').value = state.config.mlxExecutable || '';
+    document.getElementById('s-model').value = w.model || '';
+    syncModelPreset('');
+    document.getElementById('s-python').value = state.config.pythonExecutable || '';
+    document.getElementById('s-port').value = state.config.port || '';
+    document.getElementById('s-vad_segmentation').value = w.vad_segmentation || '';
+    document.getElementById('s-vad_max_segment_s').value = w.vad_max_segment_s || '';
+    ['vad_speech_pad_ms','repetition_penalty','no_repeat_ngram_size']
+      .forEach(f => { document.getElementById('s-' + f).value = w[f] || ''; });
+    document.getElementById('s-device').value = w.device || '';
+    document.getElementById('s-compute_type').value = w.compute_type || '';
+    document.getElementById('s-language').value = w.language || '';
+    document.getElementById('s-task').value = w.task || '';
+    document.getElementById('s-beam_size').value = w.beam_size || '';
+    document.getElementById('s-temperature').value = w.temperature || '';
+    document.getElementById('s-no_speech_threshold').value = w.no_speech_threshold || '';
+    document.getElementById('s-vad_threshold').value = w.vad_threshold || '';
+    document.getElementById('s-vad_min_speech_duration_ms').value = w.vad_min_speech_duration_ms || '';
+    document.getElementById('s-vad_min_silence_duration_ms').value = w.vad_min_silence_duration_ms || '';
+    document.getElementById('s-initial_prompt').value = w.initial_prompt || '';
+    document.getElementById('s-mlx-model').value = m.model || '';
+    syncModelPreset('mlx-');
+    document.getElementById('s-mlx-language').value = m.language || '';
+    document.getElementById('s-mlx-task').value = m.task || '';
+    document.getElementById('s-mlx-temperature').value = m.temperature || '';
+    document.getElementById('s-mlx-no_speech_threshold').value = m.no_speech_threshold || '';
+    document.getElementById('s-mlx-word_timestamps').value = m.word_timestamps || '';
+    document.getElementById('s-mlx-fp16').value = m.fp16 || '';
+    document.getElementById('s-mlx-initial_prompt').value = m.initial_prompt || '';
+    ['vad_segmentation','vad_threshold','vad_min_speech_duration_ms','vad_min_silence_duration_ms','vad_max_segment_s','vad_speech_pad_ms']
+      .forEach(f => { document.getElementById('s-mlx-' + f).value = m[f] || ''; });
+    const t = state.config.translation || {};
+    document.getElementById('s-tr-enabled').value = t.enabled ? 'true' : 'false';
+    document.getElementById('s-tr-baseUrl').value = t.baseUrl || '';
+    document.getElementById('s-tr-apiKey').value = '';
+    document.getElementById('s-tr-apiKey').placeholder = t.apiKeySet ? '(saved — leave blank to keep)' : 'not needed for llama-server';
+    document.getElementById('s-tr-model').value = t.model || '';
+    document.getElementById('s-tr-batchSize').value = t.batchSize || '';
+    document.getElementById('s-tr-contextLines').value = t.contextLines || '';
+    document.getElementById('s-tr-temperature').value = t.temperature || '';
+    document.getElementById('s-tr-stylePrompt').value = t.stylePrompt || '';
+    document.getElementById('s-tr-stylePrompt').placeholder = t.defaultStylePrompt || '';
+    document.getElementById('s-tr-englishOnly').checked = t.englishOnly !== false;
+    ['llamaExecutable','llamaModel','llamaArgs','llamaLoadWait']
+      .forEach(f => { document.getElementById('s-tr-' + f).value = t[f] || ''; });
+    onBackendChange();
+    document.getElementById('settings-overlay').classList.add('open');
+    document.getElementById('s-autoStart').checked = !!state.config.autoStart;
+    document.getElementById('s-notify').checked = pref('notifyDesktop', false)
+      && 'Notification' in window && Notification.permission === 'granted';
+    renderNotifyHint();
+    document.getElementById('tr-test-result').innerHTML = '';
+    updateSettingsVisibility();
+    checkPaths();
+    loadLlamaModels();
+    refreshLlamaStatus();
+    clearInterval(llamaStatusTimer);
+    llamaStatusTimer = setInterval(refreshLlamaStatus, 3000);
+  }
+
+  // Model picker: the text box is the real value; the dropdown fills it in.
+  // prefix is '' for whisper-ctranslate2 fields, 'mlx-' for mlx-whisper fields.
+  function onModelPreset(prefix) {
+    const sel = document.getElementById(`s-${prefix}model-preset`);
+    const input = document.getElementById(`s-${prefix}model`);
+    if (!sel.value) { input.focus(); return; } // Custom: type a path or repo id
+    input.value = sel.value;
+    // Models without timestamps need VAD segmentation and no initial prompt
+    if (sel.selectedOptions[0].dataset.vad) {
+      document.getElementById(`s-${prefix}vad_segmentation`).value = 'True';
+      document.getElementById(`s-${prefix}initial_prompt`).value = '';
+    }
+  }
+
+  function syncModelPreset(prefix) {
+    const sel = document.getElementById(`s-${prefix}model-preset`);
+    const v = document.getElementById(`s-${prefix}model`).value.trim();
+    const match = [...sel.options].find(o => o.value && o.value === v);
+    sel.value = match ? match.value : '';
+  }
+
+  function setEndpoint(url) {
+    document.getElementById('s-tr-baseUrl').value = url;
+    updateSettingsVisibility();
+  }
+
+  // Hide what doesn't apply: LLM fields in single-stage mode, the API key for a
+  // local endpoint, the llama-server section for a remote one
+  function updateSettingsVisibility() {
+    const twoStage = document.getElementById('s-tr-enabled').value === 'true';
+    const local = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/i.test(document.getElementById('s-tr-baseUrl').value.trim());
+    document.getElementById('tr-llm-fields').style.display = twoStage ? '' : 'none';
+    document.getElementById('row-tr-apiKey').style.display = local ? 'none' : '';
+    document.getElementById('llama-section').style.display = local ? '' : 'none';
+  }
+
+  // ✓/✗ after the label of each path field. Model fields are only checked when
+  // they look like a local path (stock names and HF repo ids download by themselves).
+  const looksLocal = v => /^(~|\/|[A-Za-z]:[\\/]|\.{1,2}[\\/])/.test(v);
+  const PATH_FIELDS = [
+    ['s-folder'], ['s-executable', 'ct2'], ['s-mlx-executable', 'mlx'], ['s-python'],
+    ['s-model', 'ct2', looksLocal], ['s-mlx-model', 'mlx', looksLocal],
+    ['s-tr-llamaExecutable'], ['s-tr-llamaModel']
+  ];
+  let pathCheckTimer = null;
+  function checkPathsSoon() { clearTimeout(pathCheckTimer); pathCheckTimer = setTimeout(checkPaths, 400); }
+
+  async function checkPaths() {
+    const backend = document.getElementById('s-backend').value === 'mlx' ? 'mlx' : 'ct2';
+    const paths = {};
+    for (const [id, only, test] of PATH_FIELDS) {
+      const v = document.getElementById(id).value.trim();
+      if (v && (!only || only === backend) && (!test || test(v))) paths[id] = v;
+    }
+    let result = {};
+    try {
+      result = await (await fetch('/api/check-paths', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths })
+      })).json();
+    } catch (e) { return; }
+    for (const [id] of PATH_FIELDS) {
+      const label = document.getElementById(id).closest('.setting-row').querySelector('.setting-label');
+      let mark = label.querySelector('.path-mark');
+      if (!(id in result) || result[id] === null) { if (mark) mark.remove(); continue; }
+      if (!mark) { mark = document.createElement('span'); label.appendChild(mark); }
+      mark.className = 'path-mark ' + (result[id] ? 'ok' : 'bad');
+      mark.textContent = result[id] ? '✓' : '✗';
+      mark.title = result[id] ? 'Found' : 'Not found on this machine';
+    }
+  }
+  PATH_FIELDS.forEach(([id]) => document.getElementById(id).addEventListener('input', checkPathsSoon));
+  document.getElementById('s-model-preset').addEventListener('change', checkPathsSoon);
+  document.getElementById('s-mlx-model-preset').addEventListener('change', checkPathsSoon);
+  document.getElementById('s-tr-llamaModel-preset').addEventListener('change', checkPathsSoon);
+  document.getElementById('s-backend').addEventListener('change', checkPathsSoon);
+
+  // Save the form, then send one sample line through the translation endpoint
+  async function testTranslation() {
+    const out = document.getElementById('tr-test-result');
+    const btn = document.getElementById('btn-tr-test');
+    if (!(await saveSettings({ keepOpen: true }))) return;
+    btn.disabled = true;
+    out.innerHTML = 'Testing… (this starts llama-server first if it isn\'t running)';
+    try {
+      const r = await (await fetch('/api/translation/test', { method: 'POST' })).json();
+      const log = (r.log || []).filter(l => !/^Waiting/.test(l)).map(l => '\n  ' + escHtml(l)).join('');
+      out.innerHTML = r.ok
+        ? `<span class="ok">✓ works</span> in ${(r.ms / 1000).toFixed(1)}s: ${escHtml(r.japanese)} → ${escHtml(r.english)}${log}`
+        : `<span class="bad">✗ ${escHtml(r.error)}</span>${log}`;
+    } catch (e) {
+      out.innerHTML = `<span class="bad">✗ ${escHtml(e.message)}</span>`;
+    } finally {
+      btn.disabled = false;
+      refreshLlamaStatus();
+    }
+  }
+
+  // Installed .gguf models for the llama-server dropdown; the text box is the real value
+  async function loadLlamaModels() {
+    const sel = document.getElementById('s-tr-llamaModel-preset');
+    let models = [];
+    try { models = (await (await fetch('/api/llama/models')).json()).models; } catch (e) { /* keep Custom only */ }
+    const gb = n => (n / 1024 ** 3).toFixed(1) + ' GB';
+    sel.innerHTML = '<option value="">Custom path…</option>' + models.map(m =>
+      `<option value="${escHtml(m.path)}">${escHtml(m.name)} (${gb(m.size)})</option>`).join('');
+    syncLlamaModelPreset();
+  }
+
+  function onLlamaModelPreset() {
+    const sel = document.getElementById('s-tr-llamaModel-preset');
+    const input = document.getElementById('s-tr-llamaModel');
+    if (!sel.value) { input.focus(); return; }
+    input.value = sel.value;
+  }
+
+  function syncLlamaModelPreset() {
+    const sel = document.getElementById('s-tr-llamaModel-preset');
+    const norm = p => p.trim().replace(/\\/g, '/').toLowerCase();
+    const v = norm(document.getElementById('s-tr-llamaModel').value);
+    const match = [...sel.options].find(o => o.value && norm(o.value) === v);
+    sel.value = match ? match.value : '';
+  }
+
+  // What the local translation endpoint is serving; polled while Settings is open
+  let llamaStatusTimer = null;
+  async function refreshLlamaStatus() {
+    const el = document.getElementById('llama-status');
+    let s;
+    try { s = await (await fetch('/api/llama/status')).json(); } catch (e) { return; }
+    const who = s.startedByApp ? 'started by this app' : 'started outside this app';
+    const text = !s.local ? 'Base URL is not local (nothing to show)'
+      : s.state === 'ready' ? `${s.model || 'unknown model'}${s.ctx ? ` · ctx ${s.ctx}` : ''} · ${s.url} · ${who}`
+        + (s.nextModel ? ` · switches to ${s.nextModel} on the next translation` : '')
+      : s.state === 'loading' ? `loading model at ${s.url} (${who})`
+      : s.state === 'starting' ? `starting at ${s.url}`
+      : s.state === 'error' ? `${s.url} answers, but not like llama-server`
+      : `not running at ${s.url}${s.autoStart ? ' (starts when a video needs translating)' : ''}`;
+    el.innerHTML = `<span class="dot ${escHtml(s.state || '')}"></span>${escHtml(text)}`;
+  }
+
+  function closeSettings() {
+    clearInterval(llamaStatusTimer);
+    llamaStatusTimer = null;
+    document.getElementById('settings-overlay').classList.remove('open');
+  }
+
+  async function saveSettings({ keepOpen = false } = {}) {
+    // Only include fields that have values to avoid overwriting good config with blanks
+    const val = id => document.getElementById(id).value.trim();
+    const whisperArgs = {};
+    const argFields = ['model','device','compute_type','language','task','beam_size',
+      'temperature','no_speech_threshold','vad_threshold',
+      'vad_min_speech_duration_ms','vad_min_silence_duration_ms','initial_prompt',
+      'vad_segmentation','vad_max_segment_s','vad_speech_pad_ms','repetition_penalty','no_repeat_ngram_size'];
+    // initial_prompt is sent even when blank so it can be cleared (anime-whisper needs it empty)
+    argFields.forEach(f => { if (val('s-' + f) !== '' || f === 'initial_prompt') whisperArgs[f] = val('s-' + f); });
+    const mlxArgs = {};
+    const mlxFields = ['model','language','task','temperature','no_speech_threshold',
+      'word_timestamps','fp16','initial_prompt','vad_segmentation','vad_threshold',
+      'vad_min_speech_duration_ms','vad_min_silence_duration_ms','vad_max_segment_s','vad_speech_pad_ms'];
+    mlxFields.forEach(f => { if (val('s-mlx-' + f) !== '' || f === 'initial_prompt') mlxArgs[f] = val('s-mlx-' + f); });
+    // Style prompt and model may be cleared on purpose (blank = default / server's model)
+    const translation = {
+      enabled: val('s-tr-enabled') === 'true',
+      baseUrl: val('s-tr-baseUrl'),
+      apiKey: val('s-tr-apiKey'),
+      model: val('s-tr-model'),
+      batchSize: val('s-tr-batchSize') || '30',
+      contextLines: val('s-tr-contextLines') || '5',
+      temperature: val('s-tr-temperature') || '0.3',
+      stylePrompt: val('s-tr-stylePrompt'),
+      englishOnly: document.getElementById('s-tr-englishOnly').checked,
+      // Executable and model may be cleared (blank = start llama-server yourself)
+      llamaExecutable: val('s-tr-llamaExecutable'),
+      llamaModel: val('s-tr-llamaModel'),
+      llamaArgs: val('s-tr-llamaArgs'),
+      llamaLoadWait: val('s-tr-llamaLoadWait') || '15'
+    };
+    const body = {
+      watchFolder: val('s-folder') || undefined,
+      backend: val('s-backend') || undefined,
+      whisperExecutable: val('s-executable') || undefined,
+      mlxExecutable: val('s-mlx-executable') || undefined,
+      pythonExecutable: val('s-python'),
+      autoStart: document.getElementById('s-autoStart').checked,
+      port: val('s-port'),
+      whisperArgs,
+      mlxArgs,
+      translation
+    };
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error); return false; }
+    state.config = data.config;
+    document.getElementById('folder-input').value = data.config.watchFolder;
+    if (!keepOpen) closeSettings();
+    return true;
+  }
+
+  // ── Tabs ──
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('main').classList.toggle('hidden', tab !== 'translate');
+    document.getElementById('concat-view').classList.toggle('hidden', tab !== 'concat');
+    document.querySelectorAll('[data-help]').forEach(el => el.classList.toggle('hidden', el.dataset.help !== tab));
+    document.getElementById('help-title').textContent = 'How to use: ' + tab;
+    if (tab === 'concat' && !concat.path) loadConcatFolder(state.config.watchFolder || '');
+  }
+
+  // ── Concat ──
+  // selected: absolute paths in concat order (order of checking, reorderable)
+  let concat = { path: '', parent: null, dirs: [], files: [], selected: [], nameEdited: false, job: null };
+
+  const baseName = p => p.split(/[\\/]/).pop();
+  const dirName  = p => p.replace(/[\\/][^\\/]+$/, '');
+  const stripExt = n => n.replace(/\.[^.]+$/, '');
+  const extOf    = n => (n.match(/\.[^.]+$/) || ['.mp4'])[0];
+
+  function fmtSize(bytes) {
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+    return Math.round(bytes / 1e3) + ' KB';
+  }
+
+  async function loadConcatFolder(dir) {
+    const res = await fetch('/api/videos?path=' + encodeURIComponent(dir));
+    const data = await res.json();
+    if (!res.ok) { setConcatStatus(data.error, true); return; }
+    concat.path = data.path;
+    concat.parent = data.parent;
+    concat.dirs = data.dirs;
+    concat.files = data.files;
+    document.getElementById('concat-folder').value = data.path;
+    renderConcat();
+  }
+
+  function renderConcat() {
+    const folderIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.586a1 1 0 01.707.293L8.5 4H13.5A1.5 1.5 0 0115 5.5v7A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9z"/></svg>`;
+    let html = '';
+    if (concat.parent) html += `<div class="tree-folder cc-dir" onclick="loadConcatFolder(concat.parent)">${folderIcon} ..</div>`;
+    concat.dirs.forEach((d, i) => {
+      html += `<div class="tree-folder cc-dir" onclick="loadConcatFolder(concat.dirs[${i}].path)">${folderIcon} ${escHtml(d.name)}</div>`;
+    });
+    concat.files.forEach((f, i) => {
+      const idx = concat.selected.indexOf(f.path);
+      html += `<label class="tree-file cc-file" title="${escHtml(f.path)}">
+        <input type="checkbox" ${idx >= 0 ? 'checked' : ''} onchange="toggleConcatFile(${i})" />
+        ${idx >= 0 ? `<span class="cc-order">${idx + 1}</span>` : ''}
+        <span class="cc-name">${escHtml(f.name)}</span>
+        <span class="cc-size">${fmtSize(f.size)}</span>
+      </label>`;
+    });
+    if (!concat.dirs.length && !concat.files.length) {
+      html += `<div class="tree-folder">No video files in this folder</div>`;
+    }
+    document.getElementById('concat-list').innerHTML = html;
+
+    const sel = concat.selected;
+    document.getElementById('concat-count').textContent = sel.length + ' selected';
+    document.getElementById('concat-selected').innerHTML = sel.map((p, i) => `
+      <div class="cs-item" title="${escHtml(p)}">
+        <span class="cs-num">${i + 1}</span>
+        <span class="cs-name">${escHtml(baseName(p))}</span>
+        <span class="cs-btn ${i === 0 ? 'off' : ''}" title="Move up" onclick="moveConcat(${i}, -1)">▲</span>
+        <span class="cs-btn ${i === sel.length - 1 ? 'off' : ''}" title="Move down" onclick="moveConcat(${i}, 1)">▼</span>
+        <span class="cs-btn" title="Remove" onclick="removeConcat(${i})">✕</span>
+      </div>`).join('');
+
+    // Auto-name as "name1+name2.ext" until the user types their own name
+    const nameInput = document.getElementById('concat-name');
+    if (!concat.nameEdited) {
+      nameInput.value = sel.length >= 2
+        ? sel.map(p => stripExt(baseName(p))).join('+') + extOf(baseName(sel[0]))
+        : '';
+    }
+    document.getElementById('concat-outdir').textContent = sel.length ? 'Saves to: ' + dirName(sel[0]) : '';
+    renderConcatJob();
+  }
+
+  function renderConcatJob() {
+    const job = concat.job;
+    const running = job && job.status === 'running';
+    document.getElementById('btn-concat').disabled = running || concat.selected.length < 2;
+    document.getElementById('btn-concat-cancel').classList.toggle('hidden', !running);
+    document.getElementById('concat-progress').classList.toggle('hidden', !running);
+    document.getElementById('btn-concat-reveal').classList.toggle('hidden', !(job && job.status === 'done'));
+    if (!job) return;
+    document.getElementById('concat-bar').style.width = job.progress + '%';
+    if (running) setConcatStatus(`Concatenating… ${job.progress}%`);
+    else if (job.status === 'done') setConcatStatus('Done: ' + job.outputPath);
+    else if (job.status === 'cancelled') setConcatStatus('Cancelled');
+    else if (job.status === 'error') setConcatStatus('ffmpeg failed:\n' + job.error, true);
+  }
+
+  function setConcatStatus(text, isErr) {
+    const el = document.getElementById('concat-status');
+    el.textContent = text || '';
+    el.classList.toggle('err', !!isErr);
+  }
+
+  function toggleConcatFile(i) {
+    const p = concat.files[i].path;
+    const idx = concat.selected.indexOf(p);
+    if (idx >= 0) concat.selected.splice(idx, 1);
+    else concat.selected.push(p);
+    renderConcat();
+  }
+
+  function moveConcat(i, delta) {
+    const sel = concat.selected;
+    const j = i + delta;
+    if (j < 0 || j >= sel.length) return;
+    [sel[i], sel[j]] = [sel[j], sel[i]];
+    renderConcat();
+  }
+
+  function removeConcat(i) {
+    concat.selected.splice(i, 1);
+    renderConcat();
+  }
+
+  async function apiConcat() {
+    const outputName = document.getElementById('concat-name').value.trim();
+    const res = await fetch('/api/concat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: concat.selected, outputName })
+    });
+    const data = await res.json();
+    if (!res.ok) setConcatStatus(data.error, true);
+  }
+
+  async function apiConcatCancel() {
+    await fetch('/api/concat/cancel', { method: 'POST' });
+  }
+
+  function onConcatMessage(job) {
+    const wasRunning = concat.job && concat.job.status === 'running';
+    concat.job = job;
+    if (wasRunning && job && job.status === 'done') {
+      playChime();
+      // Reset for the next concat and show the new file in the listing
+      concat.selected = [];
+      concat.nameEdited = false;
+      if (concat.path) { loadConcatFolder(concat.path).then(renderConcatJob); return; }
+    }
+    renderConcatJob();
+  }
+
+  // ── Util ──
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Help panel ──
+  function toggleHelp() {
+    const body = document.getElementById('help-body');
+    const open = body.classList.toggle('hidden') === false;
+    document.getElementById('help-arrow').textContent = open ? '▾' : '▸';
+    try { localStorage.setItem('helpOpen', open ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+  }
+  try { if (localStorage.getItem('helpOpen') === '1') toggleHelp(); } catch (e) { /* storage unavailable */ }
+
+  // init log panel collapsed
+  document.getElementById('log-panel').style.height = '28px';
+  document.getElementById('log-body').style.display = 'none';
+
+  // ── Log panel drag-to-resize ──
+  (function() {
+    const handle = document.getElementById('log-resize-handle');
+    const panel  = document.getElementById('log-panel');
+    let dragging = false, startY = 0, startH = 0;
+    handle.addEventListener('mousedown', e => {
+      if (!logVisible) return;
+      dragging = true;
+      startY = e.clientY;
+      startH = panel.offsetHeight;
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const delta = startY - e.clientY;           // drag up = grow
+      const newH = Math.max(80, Math.min(window.innerHeight * 0.8, startH + delta));
+      panel.style.height = newH + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (logVisible) localStorage.setItem('logPanelHeight', panel.offsetHeight);
+    });
+  })();
+
+  // ── Queue pane minimum width: the four control buttons always fit ──
+  // Measured from a hidden copy of the row at its natural width, with Resume
+  // (the wider of the Pause/Resume pair) showing.
+  function fitQueuePane() {
+    const row = document.getElementById('queue-controls');
+    const probe = row.cloneNode(true);
+    probe.removeAttribute('id');
+    probe.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    Object.assign(probe.style, { position: 'absolute', visibility: 'hidden', width: 'max-content', left: '-9999px' });
+    const [, pause, resume] = probe.children;
+    pause.style.display = 'none';
+    resume.style.display = '';
+    document.body.appendChild(probe);
+    const need = Math.ceil(probe.getBoundingClientRect().width) + 2;
+    probe.remove();
+    document.getElementById('right').style.minWidth = need + 'px';
+  }
+  fitQueuePane();
+  if (document.fonts) document.fonts.ready.then(fitQueuePane); // web font changes the widths
+
+  // ── Side pane drag-to-resize ──
+  // Each .pane-resizer sizes the pane right after it (queue, concat order):
+  // drag left to widen; width is remembered per browser; double-click resets.
+  document.querySelectorAll('.pane-resizer').forEach(handle => {
+    const pane = handle.nextElementSibling;
+    const key = handle.dataset.key;
+    // A pane's own min-width (the queue pane's button row) wins over 180 px
+    const minW = () => Math.max(180, parseFloat(pane.style.minWidth) || 0);
+    const clamp = w => Math.round(Math.max(minW(), Math.min(window.innerWidth * 0.6, w)));
+    const apply = w => { pane.style.width = clamp(w) + 'px'; };
+    // The width the user chose; the shown width may be narrower while the
+    // window is small, and returns to this when it grows back
+    let wanted = null;
+    try { wanted = parseInt(localStorage.getItem(key), 10) || null; } catch (e) { /* storage unavailable */ }
+    if (wanted) apply(wanted);
+
+    let startX = 0, startW = 0, dragging = false;
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      startX = e.clientX;
+      startW = pane.offsetWidth;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (dragging) apply(startW + (startX - e.clientX));
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      wanted = pane.offsetWidth;
+      try { localStorage.setItem(key, wanted); } catch (e) { /* storage unavailable */ }
+    });
+    handle.addEventListener('dblclick', () => {
+      pane.style.width = ''; // back to the stylesheet width
+      wanted = null;
+      try { localStorage.removeItem(key); } catch (e) { /* storage unavailable */ }
+    });
+    // Fit the chosen width to the window as it shrinks and grows
+    window.addEventListener('resize', () => { if (wanted) apply(wanted); });
+  });
+
+  // Polling fallback: re-fetch full state every 3s while a job is running.
+  // This ensures the UI updates even if a WebSocket message is missed.
+  setInterval(async () => {
+    // Poll whenever running OR if any item is still marked running (catches missed WS updates)
+    const hasRunningItem = state.queue.some(i => i.status === 'running');
+    if (!state.isRunning && !hasRunningItem) return;
+    try {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      state.isRunning = data.isRunning;
+      state.isPaused = data.isPaused;
+      state.queue = data.queue;
+      state.config = data.config;
+      render();
+    } catch (e) { /* ignore network errors */ }
+  }, 3000);
+
+  // ── Server menu (gear): reboot / shut down ──
+  let serverGone = false; // set once we've asked the server to stop; no auto-reconnect
+
+  // Keep retrying until the server is back (e.g. nodemon restarted it)
+  function reconnect() {
+    init().catch(() => { if (!serverGone) setTimeout(reconnect, 2000); });
+  }
+
+  function toggleServerMenu(e) {
+    e.stopPropagation();
+    const open = document.getElementById('server-menu').classList.toggle('hidden') === false;
+    document.getElementById('gear-btn').setAttribute('aria-expanded', open);
+    if (open) document.querySelector('#server-menu button').focus();
+  }
+
+  function closeServerMenu() {
+    document.getElementById('server-menu').classList.add('hidden');
+    document.getElementById('gear-btn').setAttribute('aria-expanded', 'false');
+  }
+  document.addEventListener('click', e => { if (!e.target.closest('#server-menu-wrap')) closeServerMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeServerMenu(); });
+
+  function showServerOverlay(title, html) {
+    document.getElementById('server-overlay-title').textContent = title;
+    document.getElementById('server-overlay-text').innerHTML = html;
+    document.getElementById('server-overlay').classList.remove('hidden');
+  }
+
+  async function serverAction(kind) {
+    closeServerMenu();
+    const busy = state.queue.some(i => i.status === 'running') || (concat.job && concat.job.status === 'running');
+    const question = kind === 'shutdown' ? 'Shut down the Subtitle Studio server?' : 'Reboot the Subtitle Studio server?';
+    const warning = busy ? '\n\nThe running job will be stopped. A finished Japanese transcript (.ja.srt) is kept, so the next run only translates.' : '';
+    if (!confirm(question + warning)) return;
+
+    serverGone = true;
+    showServerOverlay(kind === 'shutdown' ? 'Shutting down…' : 'Rebooting…', '');
+    try {
+      await fetch('/api/server/' + kind, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true })
+      });
+    } catch (e) { /* the server may close the connection as it exits */ }
+
+    if (kind === 'shutdown') {
+      showServerOverlay('Server stopped',
+        `Port ${escHtml(location.port || '80')} is free and no jobs are running. You can close this tab.<br>` +
+        'To start again, run <code>npm start</code> and reload this page.');
+      return;
+    }
+
+    // Reboot: wait for the new server to answer, then load it. If the port
+    // was changed in Settings, follow it (no-cors: we only need "it answers").
+    const port = String(state.config.nextPort || location.port);
+    const target = new URL(location.href);
+    target.port = port;
+    const samePort = port === location.port;
+    await new Promise(r => setTimeout(r, 1000));
+    for (let i = 0; i < 60; i++) {
+      try {
+        const res = await fetch(new URL('/api/state', target), samePort ? { cache: 'no-store' } : { mode: 'no-cors', cache: 'no-store' });
+        if (!samePort || res.ok) { location.href = target.href; return; }
+      } catch (e) { /* not up yet */ }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    showServerOverlay('Server didn\'t come back',
+      'It may have failed to start. Check the terminal, or run <code>npm start</code>, then reload this page.');
+  }
+
+  init();
+</script>
+</body>
+</html>

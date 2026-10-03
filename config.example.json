@@ -1,0 +1,44 @@
+{
+  "watchFolder": "C:\\Videos\\Japanese",
+  "backend": "ctranslate2",
+  "whisperExecutable": "whisper-ctranslate2",
+  "mlxExecutable": "mlx_whisper",
+  "whisperArgs": {
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float32",
+    "output_format": "srt",
+    "language": "ja",
+    "task": "translate",
+    "vad_filter": "True",
+    "vad_threshold": "0.3",
+    "vad_min_speech_duration_ms": "200",
+    "vad_min_silence_duration_ms": "1000",
+    "suppress_blank": "True",
+    "beam_size": "4",
+    "temperature": "0.0",
+    "no_speech_threshold": "0.4",
+    "word_timestamps": "True",
+    "initial_prompt": ""
+  },
+  "mlxArgs": {
+    "model": "mlx-community/whisper-large-v3-mlx",
+    "language": "ja",
+    "task": "translate",
+    "temperature": "0.0",
+    "no_speech_threshold": "0.4",
+    "word_timestamps": "True",
+    "fp16": "True",
+    "initial_prompt": ""
+  },
+  "translation": {
+    "enabled": true,
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKey": "",
+    "model": "",
+    "batchSize": "30",
+    "contextLines": "5",
+    "temperature": "0.3",
+    "stylePrompt": ""
+  }
+}
