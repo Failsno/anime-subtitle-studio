@@ -1559,30 +1559,38 @@ app.get('/api/browse', (req, res) => {
   }
 });
 
+// Subfolders (recursively, skipping hidden ones) + video files under one directory
+const VIDEO_TREE_DEPTH = 6;
+function listVideoTree(dir, depth = 0) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  const dirs = depth >= VIDEO_TREE_DEPTH ? [] : entries
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .sort(byName)
+    .map(e => {
+      const full = path.join(dir, e.name);
+      let sub = { dirs: [], files: [] };
+      try { sub = listVideoTree(full, depth + 1); } catch (err) { /* unreadable */ }
+      return { name: e.name, path: full, dirs: sub.dirs, files: sub.files };
+    });
+  const files = entries
+    .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
+    .sort(byName)
+    .map(e => {
+      const full = path.join(dir, e.name);
+      let size = 0;
+      try { size = fs.statSync(full).size; } catch (err) { /* unreadable */ }
+      return { name: e.name, path: full, size };
+    });
+  return { dirs, files };
+}
+
 app.get('/api/videos', (req, res) => {
-  // Lists subfolders + video files in one directory (for the concat tab)
+  // Lists subfolders (with their contents) + video files in one directory (for the concat tab)
   const dir = req.query.path || config.watchFolder;
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
     const parent = path.dirname(dir);
-    res.json({
-      path: dir,
-      parent: parent !== dir ? parent : null,
-      dirs: entries
-        .filter(e => e.isDirectory())
-        .map(e => ({ name: e.name, path: path.join(dir, e.name) }))
-        .sort(byName),
-      files: entries
-        .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
-        .map(e => {
-          const full = path.join(dir, e.name);
-          let size = 0;
-          try { size = fs.statSync(full).size; } catch (err) { /* unreadable */ }
-          return { name: e.name, path: full, size };
-        })
-        .sort(byName)
-    });
+    res.json({ path: dir, parent: parent !== dir ? parent : null, ...listVideoTree(dir) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

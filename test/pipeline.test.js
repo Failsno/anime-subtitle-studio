@@ -318,6 +318,25 @@ test('Concat: show the joined file once it exists', { timeout: MIN }, async () =
   });
 });
 
+test('Concat: a folder lists its subfolders with their videos', { timeout: MIN }, async () => {
+  const dir = makeWatchFolder();
+  fs.mkdirSync(path.join(dir, 'disc1', 'extras'), { recursive: true });
+  fs.mkdirSync(path.join(dir, '.hidden'));
+  fs.writeFileSync(path.join(dir, 'disc1', 'part1.mp4'), 'x');
+  fs.writeFileSync(path.join(dir, 'disc1', 'notes.txt'), 'x');
+  fs.writeFileSync(path.join(dir, 'disc1', 'extras', 'bonus.mkv'), 'x');
+  fs.writeFileSync(path.join(dir, '.hidden', 'secret.mp4'), 'x');
+  await withServer(baseConfig(dir, { backend: 'ctranslate2', whisperExecutable: 'definitely-not-a-real-whisper' }), async s => {
+    const list = await s.get('/api/videos?path=' + encodeURIComponent(dir));
+    assert.deepEqual(list.files.map(f => f.name), ['speech.mp4']);
+    assert.deepEqual(list.dirs.map(d => d.name), ['disc1'], 'hidden folders skipped');
+    const disc1 = list.dirs[0];
+    assert.deepEqual(disc1.files.map(f => f.path), [path.join(dir, 'disc1', 'part1.mp4')]);
+    assert.deepEqual(disc1.dirs.map(d => d.name), ['extras']);
+    assert.deepEqual(disc1.dirs[0].files.map(f => f.name), ['bonus.mkv']);
+  });
+});
+
 test('Concat: "delete originals" removes the inputs only after a successful join', { timeout: MIN }, async () => {
   const dir = makeWatchFolder();
   const files = [path.join(dir, 'speech.mp4'), path.join(dir, 'part2.mp4')];

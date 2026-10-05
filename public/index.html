@@ -1040,7 +1040,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
         <h4>Mac (Apple Silicon)</h4>
         <ol>
           <li>Install ffmpeg: <pre>brew install ffmpeg</pre></li>
-          <li>Browse to a folder on the left (click folders, <b>..</b> goes up) and tick the videos <b>in playback order</b>.</li>
+          <li>Browse to a folder on the left (its subfolders are listed with their videos; click a folder to open it, <b>..</b> goes up) and tick the videos <b>in playback order</b>.</li>
           <li>Reorder on the right with ▲ ▼, and remove with ✕.</li>
           <li>Edit the output name if you like (defaults to <code>a+b.mp4</code>), then <b>Concat</b>.</li>
         </ol>
@@ -2296,7 +2296,9 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
 
   // ── Concat ──
   // selected: absolute paths in concat order (order of checking, reorderable)
-  let concat = { path: '', parent: null, dirs: [], files: [], selected: [], nameEdited: false, job: null };
+  // dirs: subfolders, each with its own dirs/files (the whole tree is listed)
+  // shown: every file in the listing, flattened in display order (checkbox index)
+  let concat = { path: '', parent: null, dirs: [], files: [], shown: [], selected: [], nameEdited: false, job: null };
 
   const baseName = p => p.split(/[\\/]/).pop();
   const dirName  = p => p.replace(/[\\/][^\\/]+$/, '');
@@ -2322,15 +2324,17 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   }
 
   // ⟳ next to Load: re-list the folder that's showing. Selected files from this
-  // folder that are gone now drop out of the concat order.
+  // folder (or its subfolders) that are gone now drop out of the concat order.
   async function reloadConcatFolder(btn) {
     if (!concat.path) return;
     btn.classList.add('busy');
     try {
       await loadConcatFolder(concat.path);
-      const here = new Set(concat.files.map(f => f.path));
+      const here = new Set(concat.shown.map(f => f.path));
+      const root = concat.path.replace(/[\\/]+$/, '');
+      const inTree = p => p.startsWith(root) && /[\\/]/.test(p.charAt(root.length));
       const before = concat.selected.length;
-      concat.selected = concat.selected.filter(p => dirName(p) !== concat.path || here.has(p));
+      concat.selected = concat.selected.filter(p => !inTree(p) || here.has(p));
       if (concat.selected.length !== before) renderConcat();
     } finally { btn.classList.remove('busy'); }
   }
@@ -2338,20 +2342,28 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   function renderConcat() {
     const folderIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.586a1 1 0 01.707.293L8.5 4H13.5A1.5 1.5 0 0115 5.5v7A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9z"/></svg>`;
     let html = '';
+    concat.shown = [];
     if (concat.parent) html += `<div class="tree-folder cc-dir" onclick="loadConcatFolder(concat.parent)">${folderIcon} ..</div>`;
-    concat.dirs.forEach((d, i) => {
-      html += `<div class="tree-folder cc-dir" onclick="loadConcatFolder(concat.dirs[${i}].path)">${folderIcon} ${escHtml(d.name)}</div>`;
-    });
-    concat.files.forEach((f, i) => {
+    // Files first, then subfolders with their contents, indented; clicking a folder opens it
+    const indent = depth => depth ? ` style="padding-left:${10 + depth * 16}px"` : '';
+    const renderFiles = (files, depth) => files.forEach(f => {
+      const i = concat.shown.push(f) - 1;
       const idx = concat.selected.indexOf(f.path);
-      html += `<label class="tree-file cc-file" title="${escHtml(f.path)}">
+      html += `<label class="tree-file cc-file" title="${escHtml(f.path)}"${indent(depth)}>
         <input type="checkbox" ${idx >= 0 ? 'checked' : ''} onchange="toggleConcatFile(${i})" />
         ${idx >= 0 ? `<span class="cc-order">${idx + 1}</span>` : ''}
         <span class="cc-name">${escHtml(f.name)}</span>
         <span class="cc-size">${fmtSize(f.size)}</span>
       </label>`;
     });
-    if (!concat.dirs.length && !concat.files.length) {
+    const renderDirs = (dirs, depth) => dirs.forEach(d => {
+      html += `<div class="tree-folder cc-dir" title="Open ${escHtml(d.path)}" data-path="${escHtml(d.path)}" onclick="loadConcatFolder(this.dataset.path)"${indent(depth)}>${folderIcon} ${escHtml(d.name)}</div>`;
+      renderFiles(d.files, depth + 1);
+      renderDirs(d.dirs, depth + 1);
+    });
+    renderFiles(concat.files, 0);
+    renderDirs(concat.dirs, 0);
+    if (!concat.shown.length) {
       html += `<div class="tree-folder">No video files in this folder</div>`;
     }
     document.getElementById('concat-list').innerHTML = html;
@@ -2405,7 +2417,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   }
 
   function toggleConcatFile(i) {
-    const p = concat.files[i].path;
+    const p = concat.shown[i].path;
     const idx = concat.selected.indexOf(p);
     if (idx >= 0) concat.selected.splice(idx, 1);
     else concat.selected.push(p);
