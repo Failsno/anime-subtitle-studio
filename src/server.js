@@ -1130,14 +1130,37 @@ function stopCurrentJob() {
 // concat demuxer with stream copy (no re-encode), so inputs must share codecs.
 const VIDEO_EXTS = ['.mp4', '.mkv', '.mov', '.m4v', '.ts', '.avi', '.webm', '.flv'];
 
-// concatJob: { status: 'running'|'done'|'error'|'cancelled', files, outputPath, progress, error, log }
+// concatJob: { status: 'running'|'done'|'error'|'cancelled', files, outputPath, progress, error, log,
+//              deleteOriginals, deleted, deleteErrors }
 let concatJob = null;
 let concatProcess = null;
 
 function concatSnapshot() {
   if (!concatJob) return null;
-  const { status, files, outputPath, progress, error } = concatJob;
-  return { status, files, outputPath, progress, error };
+  const { status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors } = concatJob;
+  return { status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors };
+}
+
+// "Delete originals after concat": only called once ffmpeg succeeded and the
+// output is a non-empty file. Skips a video the queue is transcribing right now.
+function deleteConcatInputs(job) {
+  job.deleted = [];
+  job.deleteErrors = [];
+  let size = 0;
+  try { size = fs.statSync(job.outputPath).size; } catch (e) { /* missing */ }
+  if (!size) { job.deleteErrors.push('output file is missing or empty, kept the originals'); return; }
+  job.files.forEach(f => {
+    if (queue.some(i => i.filePath === f && i.status === 'running')) {
+      job.deleteErrors.push(`${path.basename(f)}: being transcribed, kept`);
+      return;
+    }
+    try {
+      fs.unlinkSync(f);
+      job.deleted.push(f);
+    } catch (e) {
+      job.deleteErrors.push(`${path.basename(f)}: ${e.message}`);
+    }
+  });
 }
 
 function broadcastConcat() {
@@ -1151,11 +1174,11 @@ function concatListLine(filePath) {
   return `file '${p}'`;
 }
 
-async function startConcat(files, outputPath) {
+async function startConcat(files, outputPath, deleteOriginals = false) {
   const listPath = path.join(os.tmpdir(), `whisper-concat-${Date.now()}.txt`);
   fs.writeFileSync(listPath, files.map(concatListLine).join('\n') + '\n', 'utf8');
 
-  concatJob = { status: 'running', files, outputPath, progress: 0, error: null, log: [] };
+  concatJob = { status: 'running', files, outputPath, progress: 0, error: null, log: [], deleteOriginals };
   broadcastConcat();
 
   const durations = await Promise.all(files.map(getDurationSeconds));
@@ -1211,7 +1234,10 @@ async function startConcat(files, outputPath) {
     if (status !== 'done') { try { fs.unlinkSync(outputPath); } catch (e) { /* never created */ } }
     job.status = status;
     job.error = error || null;
-    if (status === 'done') job.progress = 100;
+    if (status === 'done') {
+      job.progress = 100;
+      if (job.deleteOriginals) deleteConcatInputs(job);
+    }
     broadcastConcat();
   };
 
@@ -1476,26 +1502,45 @@ app.post('/api/config', (req, res) => {
     // Clear all non-running queue items and synchronously scan the new folder
     // so the response already contains the full file list (don't wait on chokidar)
     queue = queue.filter(i => i.status === 'running');
-    const scanDir = (dir, depth) => {
-      if (depth > 10) return;
-      try {
-        fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
-          const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            scanDir(full, depth + 1);
-          } else if (entry.name.toLowerCase().endsWith('.mp4') && !queueHas(full)) {
-            const item = makeItem(full);
-            if (isDone(full)) { item.status = 'done'; item.progress = 100; }
-            queue.push(item);
-          }
-        });
-      } catch (e) { /* ignore permission errors on system dirs */ }
-    };
-    if (fs.existsSync(config.watchFolder)) scanDir(config.watchFolder, 0);
+    scanWatchFolder();
     broadcastState();
     startWatcher(config.watchFolder);
   }
   res.json({ ok: true, config: publicConfig(), queue: queue.map(itemSnapshot) });
+});
+
+// Synchronously adds the watch folder's .mp4s that aren't queued yet
+// (so a response can carry the full list without waiting on chokidar)
+function scanWatchFolder() {
+  const scanDir = (dir, depth) => {
+    if (depth > 10) return;
+    try {
+      fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanDir(full, depth + 1);
+        } else if (entry.name.toLowerCase().endsWith('.mp4') && !queueHas(full)) {
+          const item = makeItem(full);
+          if (isDone(full)) { item.status = 'done'; item.progress = 100; }
+          queue.push(item);
+        }
+      });
+    } catch (e) { /* ignore permission errors on system dirs */ }
+  };
+  if (fs.existsSync(config.watchFolder)) scanDir(config.watchFolder, 0);
+}
+
+// Refresh button: rescan the current watch folder without losing the queue
+// (unlike re-applying the folder, which clears every non-running item).
+// Drops videos that are gone, marks queued ones done if their subtitles appeared.
+app.post('/api/queue/rescan', (req, res) => {
+  queue = queue.filter(i => i.status === 'running' || fs.existsSync(i.filePath));
+  queue.forEach(i => {
+    if (i.status === 'queued' && isDone(i.filePath)) { i.status = 'done'; i.progress = 100; }
+  });
+  scanWatchFolder();
+  broadcastState();
+  res.json({ ok: true, queue: queue.map(itemSnapshot) });
 });
 
 app.get('/api/browse', (req, res) => {
@@ -1544,7 +1589,7 @@ app.get('/api/videos', (req, res) => {
 });
 
 app.post('/api/concat', (req, res) => {
-  const { files, outputName } = req.body;
+  const { files, outputName, deleteOriginals } = req.body;
   if (concatJob && concatJob.status === 'running') return res.status(409).json({ error: 'A concat job is already running' });
   if (!Array.isArray(files) || files.length < 2) return res.status(400).json({ error: 'Select at least 2 files' });
   const missing = files.find(f => typeof f !== 'string' || !fs.existsSync(f));
@@ -1560,7 +1605,7 @@ app.post('/api/concat', (req, res) => {
   if (files.includes(outputPath)) return res.status(400).json({ error: 'Output cannot overwrite one of the inputs' });
   if (fs.existsSync(outputPath)) return res.status(409).json({ error: `File already exists: ${outputPath}` });
 
-  startConcat(files, outputPath);
+  startConcat(files, outputPath, deleteOriginals === true);
   res.json({ ok: true, outputPath });
 });
 

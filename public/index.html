@@ -855,6 +855,20 @@
     word-break: break-all;
   }
   #concat-status.err { color: var(--danger); }
+  .cc-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    user-select: none;
+  }
+  /* Refresh (arrow-in-a-circle) buttons next to Apply / Load */
+  .icon-btn { padding-left: 8px; padding-right: 8px; }
+  .icon-btn svg { margin: 2px 0; }
+  .icon-btn.busy { opacity: 0.5; pointer-events: none; }
 
   /* ── Help panel (strip under the tabs, content follows the active tab) ── */
   #help-panel {
@@ -1057,6 +1071,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       <label>WATCH FOLDER</label>
       <input id="folder-input" type="text" placeholder="C:\Videos\Japanese" onkeydown="onFolderKey(event)" />
       <button class="btn" onclick="applyFolder()">Apply</button>
+      <button class="btn icon-btn" onclick="rescanFolder(this)" title="Reload the current folder (keeps the queue)" aria-label="Reload folder"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><polyline points="13.5 1.5 13.5 4.5 10.5 4.5"/></svg></button>
     </div>
 
     <div id="file-tree"></div>
@@ -1129,6 +1144,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       <label>FOLDER</label>
       <input id="concat-folder" class="setting-input" style="flex:1" type="text" onkeydown="if(event.key==='Enter')loadConcatFolder(this.value.trim())" />
       <button class="btn" onclick="loadConcatFolder(document.getElementById('concat-folder').value.trim())">Load</button>
+      <button class="btn icon-btn" onclick="reloadConcatFolder(this)" title="Reload the current folder" aria-label="Reload folder"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><polyline points="13.5 1.5 13.5 4.5 10.5 4.5"/></svg></button>
     </div>
     <div id="concat-list"></div>
   </div>
@@ -1142,6 +1158,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     <div id="concat-selected"></div>
     <div id="concat-actions">
       <button class="btn primary" id="btn-concat" onclick="apiConcat()" disabled>Concat</button>
+      <label class="cc-check" title="After a successful concat, delete the selected source videos (never on error or cancel)"><input type="checkbox" id="concat-delete" /> delete originals after concat</label>
       <span class="cc-label">Output file name</span>
       <input class="setting-input" id="concat-name" type="text" placeholder="combined.mp4" oninput="concat.nameEdited = this.value.trim() !== ''" />
       <div id="concat-outdir"></div>
@@ -1952,6 +1969,21 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   }
 
   function onFolderKey(e) { if (e.key === 'Enter') applyFolder(); }
+
+  // ⟳ next to Apply: rescan the saved watch folder. Unlike Apply it keeps the
+  // queue (order, errors); it only adds new videos and drops deleted ones.
+  async function rescanFolder(btn) {
+    btn.classList.add('busy');
+    try {
+      const res = await fetch('/api/queue/rescan', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      state.queue = data.queue;
+      document.getElementById('folder-input').value = state.config.watchFolder || '';
+      render();
+    } catch (e) { alert('Could not reload the folder: ' + e.message); }
+    finally { btn.classList.remove('busy'); }
+  }
   async function applyFolder() {
     const val = document.getElementById('folder-input').value.trim();
     if (!val) return;
@@ -2289,6 +2321,20 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     renderConcat();
   }
 
+  // ⟳ next to Load: re-list the folder that's showing. Selected files from this
+  // folder that are gone now drop out of the concat order.
+  async function reloadConcatFolder(btn) {
+    if (!concat.path) return;
+    btn.classList.add('busy');
+    try {
+      await loadConcatFolder(concat.path);
+      const here = new Set(concat.files.map(f => f.path));
+      const before = concat.selected.length;
+      concat.selected = concat.selected.filter(p => dirName(p) !== concat.path || here.has(p));
+      if (concat.selected.length !== before) renderConcat();
+    } finally { btn.classList.remove('busy'); }
+  }
+
   function renderConcat() {
     const folderIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.586a1 1 0 01.707.293L8.5 4H13.5A1.5 1.5 0 0115 5.5v7A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9z"/></svg>`;
     let html = '';
@@ -2342,7 +2388,12 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     if (!job) return;
     document.getElementById('concat-bar').style.width = job.progress + '%';
     if (running) setConcatStatus(`Concatenating… ${job.progress}%`);
-    else if (job.status === 'done') setConcatStatus('Done: ' + job.outputPath);
+    else if (job.status === 'done') {
+      let msg = 'Done: ' + job.outputPath;
+      if (job.deleteOriginals && job.deleted) msg += `\nDeleted ${job.deleted.length} of ${job.files.length} originals`;
+      const errs = job.deleteErrors || [];
+      setConcatStatus(errs.length ? msg + '\nNot deleted:\n' + errs.join('\n') : msg, errs.length > 0);
+    }
     else if (job.status === 'cancelled') setConcatStatus('Cancelled');
     else if (job.status === 'error') setConcatStatus('ffmpeg failed:\n' + job.error, true);
   }
@@ -2379,7 +2430,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     const res = await fetch('/api/concat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: concat.selected, outputName })
+      body: JSON.stringify({ files: concat.selected, outputName, deleteOriginals: document.getElementById('concat-delete').checked })
     });
     const data = await res.json();
     if (!res.ok) setConcatStatus(data.error, true);

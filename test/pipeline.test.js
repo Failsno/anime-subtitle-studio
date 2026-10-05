@@ -314,6 +314,53 @@ test('Concat: show the joined file once it exists', { timeout: MIN }, async () =
     await waitFor(async () => { const j = (await s.get('/api/state')).concat; return j && j.status !== 'running'; }, 30000, 'concat');
     assert.equal((await s.get('/api/state')).concat.status, 'done');
     assert.equal((await s.post('/api/concat/reveal', {})).body.path, path.join(dir, 'joined.mp4'));
+    assert.ok(files.every(f => fs.existsSync(f)), 'originals kept by default');
+  });
+});
+
+test('Concat: "delete originals" removes the inputs only after a successful join', { timeout: MIN }, async () => {
+  const dir = makeWatchFolder();
+  const files = [path.join(dir, 'speech.mp4'), path.join(dir, 'part2.mp4')];
+  fs.copyFileSync(files[0], files[1]);
+  await withServer(baseConfig(dir, { backend: 'ctranslate2', whisperExecutable: 'definitely-not-a-real-whisper' }), async s => {
+    const finished = async () => {
+      await waitFor(async () => { const j = (await s.get('/api/state')).concat; return j && j.status !== 'running'; }, 30000, 'concat');
+      return (await s.get('/api/state')).concat;
+    };
+    // A failed join (the inputs aren't videos) must leave them alone
+    const bad = [path.join(dir, 'a.mp4'), path.join(dir, 'b.mp4')];
+    bad.forEach(f => fs.writeFileSync(f, 'not a video'));
+    assert.equal((await s.post('/api/concat', { files: bad, outputName: 'bad.mp4', deleteOriginals: true })).status, 200);
+    assert.equal((await finished()).status, 'error');
+    assert.ok(bad.every(f => fs.existsSync(f)), 'inputs kept after a failed concat');
+
+    assert.equal((await s.post('/api/concat', { files, outputName: 'joined.mp4', deleteOriginals: true })).status, 200);
+    const job = await finished();
+    assert.equal(job.status, 'done');
+    assert.deepEqual(job.deleted, files);
+    assert.deepEqual(job.deleteErrors, []);
+    assert.ok(files.every(f => !fs.existsSync(f)), 'originals deleted');
+    assert.ok(fs.statSync(path.join(dir, 'joined.mp4')).size > 0, 'joined file kept');
+  });
+});
+
+test('Reload folder: picks up new and removed videos without clearing the queue', { timeout: MIN }, async () => {
+  const dir = makeWatchFolder();
+  await withServer(baseConfig(dir, { backend: 'ctranslate2', whisperExecutable: 'definitely-not-a-real-whisper' }), async s => {
+    await waitFor(async () => (await s.get('/api/state')).queue.length === 1, 10000, 'initial scan');
+    const [first] = (await s.get('/api/state')).queue;
+
+    fs.copyFileSync(path.join(dir, 'speech.mp4'), path.join(dir, 'new.mp4'));
+    fs.writeFileSync(path.join(dir, 'speech.srt'), '');
+    let { body } = await s.post('/api/queue/rescan', {});
+    assert.deepEqual(body.queue.map(i => i.name).sort(), ['new.mp4', 'speech.mp4'], 'new video listed at once');
+    const kept = body.queue.find(i => i.name === 'speech.mp4');
+    assert.equal(kept.id, first.id, 'existing item kept, not recreated');
+    assert.equal(kept.status, 'done', 'subtitles that appeared mark it done');
+
+    fs.rmSync(path.join(dir, 'new.mp4'));
+    ({ body } = await s.post('/api/queue/rescan', {}));
+    assert.deepEqual(body.queue.map(i => i.name), ['speech.mp4'], 'deleted video dropped');
   });
 });
 
