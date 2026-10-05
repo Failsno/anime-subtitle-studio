@@ -311,8 +311,8 @@ test('Concat: show the joined file once it exists', { timeout: MIN }, async () =
     assert.equal((await s.post('/api/concat/reveal', {})).status, 400, 'nothing joined yet');
     const files = [path.join(dir, 'speech.mp4'), path.join(dir, 'part2.mp4')];
     assert.equal((await s.post('/api/concat', { files, outputName: 'joined.mp4' })).status, 200);
-    await waitFor(async () => { const j = (await s.get('/api/state')).concat; return j && j.status !== 'running'; }, 30000, 'concat');
-    assert.equal((await s.get('/api/state')).concat.status, 'done');
+    await waitFor(async () => { const j = (await s.get('/api/state')).concatJobs[0]; return j && j.status !== 'running'; }, 30000, 'concat');
+    assert.equal((await s.get('/api/state')).concatJobs[0].status, 'done');
     assert.equal((await s.post('/api/concat/reveal', {})).body.path, path.join(dir, 'joined.mp4'));
     assert.ok(files.every(f => fs.existsSync(f)), 'originals kept by default');
   });
@@ -337,14 +337,50 @@ test('Concat: a folder lists its subfolders with their videos', { timeout: MIN }
   });
 });
 
+test('Concat queue: jobs added while one runs wait their turn; queued ones can be cancelled', { timeout: MIN }, async () => {
+  const dir = makeWatchFolder();
+  const src = path.join(dir, 'speech.mp4');
+  for (const sub of ['a', 'b', 'c']) {
+    fs.mkdirSync(path.join(dir, sub));
+    for (const n of ['1.mp4', '2.mp4']) fs.copyFileSync(src, path.join(dir, sub, n));
+  }
+  const parts = sub => [path.join(dir, sub, '1.mp4'), path.join(dir, sub, '2.mp4')];
+  await withServer(baseConfig(dir, { backend: 'ctranslate2', whisperExecutable: 'definitely-not-a-real-whisper' }), async s => {
+    const first = await s.post('/api/concat', { files: parts('a'), outputName: 'a.mp4' });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.queued, false, 'starts right away when idle');
+    const second = await s.post('/api/concat', { files: parts('b'), outputName: 'b.mp4' });
+    assert.equal(second.status, 200);
+    assert.equal(second.body.queued, true, 'waits while another job runs');
+    const third = await s.post('/api/concat', { files: parts('c'), outputName: 'c.mp4' });
+    assert.equal((await s.post('/api/concat', { files: parts('c'), outputName: 'c.mp4' })).status, 409, 'same output as a queued job');
+    assert.equal((await s.post('/api/concat', { files: parts('b'), outputName: 'b2.mp4', deleteOriginals: true })).status, 409,
+      'deleting files another queued job still needs');
+    assert.equal((await s.post(`/api/concat/${third.body.id}/cancel`)).status, 200);
+
+    const jobs = async () => (await s.get('/api/state')).concatJobs;
+    await waitFor(async () => (await jobs()).every(j => j.status !== 'queued' && j.status !== 'running'), 30000, 'concat queue');
+    const done = await jobs();
+    assert.deepEqual(done.map(j => j.status), ['done', 'done', 'cancelled']);
+    assert.ok(done[1].startedAt >= done[0].finishedAt, 'one at a time, in order');
+    assert.ok(fs.existsSync(path.join(dir, 'a', 'a.mp4')) && fs.existsSync(path.join(dir, 'b', 'b.mp4')));
+    assert.ok(!fs.existsSync(path.join(dir, 'c', 'c.mp4')), 'cancelled job never ran');
+    assert.equal((await s.post(`/api/concat/${second.body.id}/reveal`, {})).body.path, path.join(dir, 'b', 'b.mp4'));
+
+    assert.equal((await s.post('/api/concat/clear-done')).status, 200);
+    assert.deepEqual(await jobs(), []);
+  });
+});
+
 test('Concat: "delete originals" removes the inputs only after a successful join', { timeout: MIN }, async () => {
   const dir = makeWatchFolder();
   const files = [path.join(dir, 'speech.mp4'), path.join(dir, 'part2.mp4')];
   fs.copyFileSync(files[0], files[1]);
   await withServer(baseConfig(dir, { backend: 'ctranslate2', whisperExecutable: 'definitely-not-a-real-whisper' }), async s => {
     const finished = async () => {
-      await waitFor(async () => { const j = (await s.get('/api/state')).concat; return j && j.status !== 'running'; }, 30000, 'concat');
-      return (await s.get('/api/state')).concat;
+      const last = async () => (await s.get('/api/state')).concatJobs.at(-1);
+      await waitFor(async () => { const j = await last(); return j && j.status !== 'running' && j.status !== 'queued'; }, 30000, 'concat');
+      return last();
     };
     // A failed join (the inputs aren't videos) must leave them alone
     const bad = [path.join(dir, 'a.mp4'), path.join(dir, 'b.mp4')];

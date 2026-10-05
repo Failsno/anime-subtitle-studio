@@ -10,7 +10,7 @@
     "screenshots": "node scripts/capture-screenshots.js"
   },
   "dependencies": {
-    "chokidar": "^3.6.0",
+    "chokidar": "^5.0.0",
     "express": "^4.19.2",
     "ws": "^8.17.1"
   },

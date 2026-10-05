@@ -253,7 +253,7 @@ wss.on('connection', ws => {
     isPaused,
     queue: queue.map(itemSnapshot)
   }));
-  ws.send(JSON.stringify({ type: 'concat', job: concatSnapshot() }));
+  ws.send(JSON.stringify({ type: 'concat', jobs: concatSnapshot() }));
 });
 
 app.use(express.json());
@@ -1126,19 +1126,25 @@ function stopCurrentJob() {
 }
 
 // ─── Concat runner ───────────────────────────────────────────────────────────
-// One concat job at a time, independent of the whisper queue. Uses ffmpeg's
-// concat demuxer with stream copy (no re-encode), so inputs must share codecs.
+// A queue of concat jobs, run one at a time, independent of the whisper queue.
+// Uses ffmpeg's concat demuxer with stream copy (no re-encode), so inputs must
+// share codecs. Like the whisper queue it lives in memory only.
 const VIDEO_EXTS = ['.mp4', '.mkv', '.mov', '.m4v', '.ts', '.avi', '.webm', '.flv'];
 
-// concatJob: { status: 'running'|'done'|'error'|'cancelled', files, outputPath, progress, error, log,
-//              deleteOriginals, deleted, deleteErrors }
+// concatJobs: [{ id, status: 'queued'|'running'|'done'|'error'|'cancelled', files, outputPath,
+//                progress, error, log, deleteOriginals, deleted, deleteErrors,
+//                queuedAt, startedAt, finishedAt }] in queue order; finished ones stay
+//                until cleared. concatJob is the running one (or null).
+let concatJobs = [];
+let nextConcatId = 1;
 let concatJob = null;
 let concatProcess = null;
 
+const concatPending = job => job.status === 'queued' || job.status === 'running';
+
 function concatSnapshot() {
-  if (!concatJob) return null;
-  const { status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors } = concatJob;
-  return { status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors };
+  return concatJobs.map(({ id, status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors, queuedAt, startedAt, finishedAt }) =>
+    ({ id, status, files, outputPath, progress, error, deleteOriginals, deleted, deleteErrors, queuedAt, startedAt, finishedAt }));
 }
 
 // "Delete originals after concat": only called once ffmpeg succeeded and the
@@ -1164,7 +1170,27 @@ function deleteConcatInputs(job) {
 }
 
 function broadcastConcat() {
-  broadcast({ type: 'concat', job: concatSnapshot() });
+  broadcast({ type: 'concat', jobs: concatSnapshot() });
+}
+
+// Start the next queued concat if none is running
+function runNextConcat() {
+  if (shuttingDown || concatJob) return;
+  const next = concatJobs.find(j => j.status === 'queued');
+  if (next) startConcat(next);
+}
+
+// Cancel a job: a queued one just drops out of the line, a running one has its
+// ffmpeg killed (finish() deletes the partial output and starts the next job)
+function cancelConcat(job) {
+  if (job.status === 'queued') {
+    job.status = 'cancelled';
+    job.finishedAt = Date.now();
+    broadcastConcat();
+  } else if (job.status === 'running') {
+    job.cancelRequested = true;
+    if (concatProcess) concatProcess.kill('SIGTERM');
+  }
 }
 
 // Concat demuxer list-file quoting: wrap in single quotes, and a literal quote
@@ -1174,22 +1200,27 @@ function concatListLine(filePath) {
   return `file '${p}'`;
 }
 
-async function startConcat(files, outputPath, deleteOriginals = false) {
-  const listPath = path.join(os.tmpdir(), `whisper-concat-${Date.now()}.txt`);
-  fs.writeFileSync(listPath, files.map(concatListLine).join('\n') + '\n', 'utf8');
-
-  concatJob = { status: 'running', files, outputPath, progress: 0, error: null, log: [], deleteOriginals };
+async function startConcat(job) {
+  const { files, outputPath } = job;
+  concatJob = job;
+  job.status = 'running';
+  job.startedAt = Date.now();
   broadcastConcat();
+
+  // Things may have changed while it waited in the queue
+  const missing = files.find(f => !fs.existsSync(f));
+  if (missing !== undefined) return endConcat(job, 'error', `File not found: ${missing}`);
+  if (fs.existsSync(outputPath)) return endConcat(job, 'error', `File already exists: ${outputPath}`);
+
+  const listPath = path.join(os.tmpdir(), `whisper-concat-${job.id}-${Date.now()}.txt`);
+  fs.writeFileSync(listPath, files.map(concatListLine).join('\n') + '\n', 'utf8');
 
   const durations = await Promise.all(files.map(getDurationSeconds));
   const totalUs = durations.reduce((a, b) => a + b, 0) * 1e6;
-  const job = concatJob;
   if (job.cancelRequested) {
     // Cancelled while ffprobe was still measuring — ffmpeg never started
     try { fs.unlinkSync(listPath); } catch (e) { /* already gone */ }
-    job.status = 'cancelled';
-    broadcastConcat();
-    return;
+    return endConcat(job, 'cancelled');
   }
 
   const args = [
@@ -1232,13 +1263,7 @@ async function startConcat(files, outputPath, deleteOriginals = false) {
     try { fs.unlinkSync(listPath); } catch (e) { /* already gone */ }
     // Don't leave a truncated/unplayable file behind
     if (status !== 'done') { try { fs.unlinkSync(outputPath); } catch (e) { /* never created */ } }
-    job.status = status;
-    job.error = error || null;
-    if (status === 'done') {
-      job.progress = 100;
-      if (job.deleteOriginals) deleteConcatInputs(job);
-    }
-    broadcastConcat();
+    endConcat(job, status, error);
   };
 
   concatProcess.on('close', code => {
@@ -1249,12 +1274,26 @@ async function startConcat(files, outputPath, deleteOriginals = false) {
   concatProcess.on('error', err => finish('error', `Could not start ffmpeg: ${err.message}`));
 }
 
+// A running job is over (done/error/cancelled): record it, then start the next one
+function endConcat(job, status, error) {
+  job.status = status;
+  job.error = error || null;
+  job.finishedAt = Date.now();
+  if (status === 'done') {
+    job.progress = 100;
+    if (job.deleteOriginals) deleteConcatInputs(job);
+  }
+  if (concatJob === job) concatJob = null;
+  broadcastConcat();
+  runNextConcat();
+}
+
 // ─── REST API ────────────────────────────────────────────────────────────────
 app.get('/api/state', (req, res) => {
   res.json({
     isRunning, isPaused,
     config: publicConfig(),
-    concat: concatSnapshot(),
+    concatJobs: concatSnapshot(),
     queue: queue.map(itemSnapshot)
   });
 });
@@ -1362,13 +1401,17 @@ app.post('/api/queue/:id/reveal', (req, res) => {
   res.json({ ok: true, path: file });
 });
 
-app.post('/api/concat/reveal', (req, res) => {
+// A concat job's output, by job id; without one, the most recently finished
+app.post(['/api/concat/reveal', '/api/concat/:id/reveal'], (req, res) => {
   if (!requireJson(req, res)) return;
-  if (!concatJob || concatJob.status !== 'done' || !fs.existsSync(concatJob.outputPath)) {
+  const job = req.params.id
+    ? concatJobs.find(j => j.id === parseInt(req.params.id, 10))
+    : concatJobs.filter(j => j.status === 'done').sort((a, b) => b.finishedAt - a.finishedAt)[0];
+  if (!job || job.status !== 'done' || !fs.existsSync(job.outputPath)) {
     return res.status(400).json({ error: 'no finished concat output' });
   }
-  revealInFileManager(concatJob.outputPath);
-  res.json({ ok: true, path: concatJob.outputPath });
+  revealInFileManager(job.outputPath);
+  res.json({ ok: true, path: job.outputPath });
 });
 
 app.post('/api/queue/retry-errors', (req, res) => {
@@ -1559,46 +1602,47 @@ app.get('/api/browse', (req, res) => {
   }
 });
 
-// Subfolders (recursively, skipping hidden ones) + video files under one directory
+// Subfolders (recursively, skipping hidden ones) + video files under one directory.
+// Async on purpose: a slow drive (spinning up, NTFS via a third-party driver,
+// busy with the watcher's scan) can take many seconds, and sync calls would
+// freeze the whole server meanwhile.
 const VIDEO_TREE_DEPTH = 6;
-function listVideoTree(dir, depth = 0) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+async function listVideoTree(dir, depth = 0) {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-  const dirs = depth >= VIDEO_TREE_DEPTH ? [] : entries
+  const dirs = depth >= VIDEO_TREE_DEPTH ? [] : await Promise.all(entries
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
     .sort(byName)
-    .map(e => {
+    .map(async e => {
       const full = path.join(dir, e.name);
-      let sub = { dirs: [], files: [] };
-      try { sub = listVideoTree(full, depth + 1); } catch (err) { /* unreadable */ }
+      const sub = await listVideoTree(full, depth + 1).catch(() => ({ dirs: [], files: [] })); // unreadable
       return { name: e.name, path: full, dirs: sub.dirs, files: sub.files };
-    });
-  const files = entries
+    }));
+  const files = await Promise.all(entries
     .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
     .sort(byName)
-    .map(e => {
+    .map(async e => {
       const full = path.join(dir, e.name);
-      let size = 0;
-      try { size = fs.statSync(full).size; } catch (err) { /* unreadable */ }
+      const size = await fs.promises.stat(full).then(st => st.size, () => 0); // unreadable
       return { name: e.name, path: full, size };
-    });
+    }));
   return { dirs, files };
 }
 
-app.get('/api/videos', (req, res) => {
-  // Lists subfolders (with their contents) + video files in one directory (for the concat tab)
+app.get('/api/videos', async (req, res) => {
+  // Lists video files + subfolders (with their contents) in one directory (for the concat tab)
   const dir = req.query.path || config.watchFolder;
   try {
     const parent = path.dirname(dir);
-    res.json({ path: dir, parent: parent !== dir ? parent : null, ...listVideoTree(dir) });
+    res.json({ path: dir, parent: parent !== dir ? parent : null, ...await listVideoTree(dir) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
 app.post('/api/concat', (req, res) => {
-  const { files, outputName, deleteOriginals } = req.body;
-  if (concatJob && concatJob.status === 'running') return res.status(409).json({ error: 'A concat job is already running' });
+  const { files, outputName } = req.body;
+  const deleteOriginals = req.body.deleteOriginals === true;
   if (!Array.isArray(files) || files.length < 2) return res.status(400).json({ error: 'Select at least 2 files' });
   const missing = files.find(f => typeof f !== 'string' || !fs.existsSync(f));
   if (missing !== undefined) return res.status(400).json({ error: `File not found: ${missing}` });
@@ -1613,15 +1657,49 @@ app.post('/api/concat', (req, res) => {
   if (files.includes(outputPath)) return res.status(400).json({ error: 'Output cannot overwrite one of the inputs' });
   if (fs.existsSync(outputPath)) return res.status(409).json({ error: `File already exists: ${outputPath}` });
 
-  startConcat(files, outputPath, deleteOriginals === true);
-  res.json({ ok: true, outputPath });
+  // Clashes with jobs still waiting or running
+  const pending = concatJobs.filter(concatPending);
+  if (pending.some(j => j.outputPath === outputPath)) {
+    return res.status(409).json({ error: `A queued concat already writes ${outputPath}` });
+  }
+  const clash = pending.find(j => (j.deleteOriginals || deleteOriginals) && j.files.some(f => files.includes(f)));
+  if (clash) {
+    const shared = clash.files.find(f => files.includes(f));
+    return res.status(409).json({ error: `${path.basename(shared)} is also in queued concat "${path.basename(clash.outputPath)}", and one of them deletes its originals` });
+  }
+
+  const job = {
+    id: nextConcatId++, status: 'queued', files, outputPath, progress: 0, error: null, log: [],
+    deleteOriginals, queuedAt: Date.now()
+  };
+  concatJobs.push(job);
+  broadcastConcat();
+  runNextConcat();
+  res.json({ ok: true, id: job.id, outputPath, queued: job.status === 'queued' });
 });
 
-app.post('/api/concat/cancel', (req, res) => {
-  if (concatJob && concatJob.status === 'running') {
-    concatJob.cancelRequested = true;
-    if (concatProcess) concatProcess.kill('SIGTERM');
-  }
+// Cancel a queued or running concat (✕ in the jobs list)
+app.post('/api/concat/:id/cancel', (req, res) => {
+  const job = concatJobs.find(j => j.id === parseInt(req.params.id, 10));
+  if (!job) return res.status(404).json({ error: 'not found' });
+  cancelConcat(job);
+  res.json({ ok: true });
+});
+
+// Remove one finished job from the list, or (no id) all finished ones
+app.delete('/api/concat/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const job = concatJobs.find(j => j.id === id);
+  if (!job) return res.status(404).json({ error: 'not found' });
+  if (concatPending(job)) return res.status(409).json({ error: 'cancel it first' });
+  concatJobs = concatJobs.filter(j => j !== job);
+  broadcastConcat();
+  res.json({ ok: true });
+});
+
+app.post('/api/concat/clear-done', (req, res) => {
+  concatJobs = concatJobs.filter(concatPending);
+  broadcastConcat();
   res.json({ ok: true });
 });
 
@@ -1638,7 +1716,7 @@ function shutdown({ restart = false } = {}) {
   isRunning = false;
   stopCurrentJob();
   if (!restart) stopLlama(); // a restart keeps the model loaded for the new server
-  if (concatJob && concatJob.status === 'running') {
+  if (concatJob) {
     concatJob.cancelRequested = true;
     if (concatProcess) concatProcess.kill('SIGTERM');
     try { fs.unlinkSync(concatJob.outputPath); } catch (e) { /* not created yet */ }

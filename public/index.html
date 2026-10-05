@@ -346,7 +346,7 @@
     text-overflow: ellipsis;
     margin-bottom: 8px;
   }
-  #progress-wrap, #concat-progress-wrap {
+  #progress-wrap {
     height: 4px;
     background: var(--border);
     border-radius: 2px;
@@ -449,7 +449,7 @@
     background: var(--bg2);
   }
 
-  #queue-header, #concat-header {
+  #queue-header, #concat-header, #concat-jobs-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -855,6 +855,32 @@
     word-break: break-all;
   }
   #concat-status.err { color: var(--danger); }
+  #concat-jobs-header { border-top: 1px solid var(--border); }
+  #concat-jobs { flex-shrink: 0; max-height: 45%; overflow-y: auto; }
+  .cj-item {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .cj-row { display: flex; align-items: center; gap: 6px; }
+  .cj-caret { flex-shrink: 0; width: 12px; color: var(--text3); cursor: pointer; user-select: none; }
+  .cj-caret:hover { color: var(--text); }
+  .cj-state { flex-shrink: 0; min-width: 62px; color: var(--text3); }
+  .cj-files { margin: 4px 0 0 18px; color: var(--text2); font-size: 10px; }
+  .cj-files div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cj-files div.gone { color: var(--text3); text-decoration: line-through; }
+  .cj-num { display: inline-block; width: 16px; color: var(--text3); }
+  .cj-item.running .cj-state { color: var(--accent); }
+  .cj-item.done .cj-state { color: var(--ok); }
+  .cj-item.error .cj-state { color: var(--danger); }
+  .cj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cj-item.cancelled .cj-name { color: var(--text3); }
+  .cj-detail { color: var(--text3); font-size: 10px; margin: 2px 0 0 18px; white-space: pre-wrap; word-break: break-all; }
+  .cj-detail.err { color: var(--danger); }
+  .cj-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .cj-bar div { height: 100%; background: var(--text2); transition: width 0.5s linear; }
+  .cc-tag { color: var(--text3); font-size: 10px; flex-shrink: 0; }
   .cc-check {
     display: flex;
     align-items: center;
@@ -1042,7 +1068,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
           <li>Install ffmpeg: <pre>brew install ffmpeg</pre></li>
           <li>Browse to a folder on the left (its subfolders are listed with their videos; click a folder to open it, <b>..</b> goes up) and tick the videos <b>in playback order</b>.</li>
           <li>Reorder on the right with ▲ ▼, and remove with ✕.</li>
-          <li>Edit the output name if you like (defaults to <code>a+b.mp4</code>), then <b>Concat</b>.</li>
+          <li>Edit the output name if you like (defaults to <code>a+b.mp4</code>), then <b>Add to queue</b>. While it runs you can pick the next set in any folder and queue that too.</li>
         </ol>
         <p>The output is saved next to the first selected file. If it's inside the watch folder, it's added to the Translate queue automatically.</p>
       </div>
@@ -1051,7 +1077,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
         <ol>
           <li>Install ffmpeg and make sure <code>ffmpeg</code> / <code>ffprobe</code> are on PATH:
             <pre>winget install Gyan.FFmpeg</pre></li>
-          <li>Same steps as on the Mac: pick files in order, reorder, name, <b>Concat</b>.</li>
+          <li>Same steps as on the Mac: pick files in order, reorder, name, <b>Add to queue</b>.</li>
         </ol>
         <p>Concat uses stream copy (no re-encode), so it's near-instant and uses no GPU on either machine.
           All parts must share codec, resolution and frame rate (e.g. pieces of one download).
@@ -1157,18 +1183,18 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     </div>
     <div id="concat-selected"></div>
     <div id="concat-actions">
-      <button class="btn primary" id="btn-concat" onclick="apiConcat()" disabled>Concat</button>
+      <button class="btn primary" id="btn-concat" onclick="apiConcat()" title="Add these files to the concat queue (starts right away if nothing is running)" disabled>Add to queue</button>
       <label class="cc-check" title="After a successful concat, delete the selected source videos (never on error or cancel)"><input type="checkbox" id="concat-delete" /> delete originals after concat</label>
       <span class="cc-label">Output file name</span>
       <input class="setting-input" id="concat-name" type="text" placeholder="combined.mp4" oninput="concat.nameEdited = this.value.trim() !== ''" />
       <div id="concat-outdir"></div>
-      <div id="concat-progress" class="hidden">
-        <div id="concat-progress-wrap"><div id="concat-bar" style="height:100%;width:0%;background:var(--text2);transition:width 0.5s linear"></div></div>
-      </div>
       <div id="concat-status"></div>
-      <button class="btn danger hidden" id="btn-concat-cancel" onclick="apiConcatCancel()">Cancel</button>
-      <button class="btn hidden" id="btn-concat-reveal" onclick="revealPath('/api/concat/reveal')" title="Open its folder with the joined video selected">📂 Show file</button>
     </div>
+    <div id="concat-jobs-header" class="hidden">
+      <span>Concat queue</span>
+      <span class="cs-btn" id="btn-concat-clear" onclick="apiConcatClearDone()" title="Remove finished, failed and cancelled jobs from the list">clear finished</span>
+    </div>
+    <div id="concat-jobs"></div>
   </div>
 </div>
 
@@ -1474,7 +1500,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       } else if (msg.type === 'log') {
         appendLog(msg.line, msg.id);
       } else if (msg.type === 'concat') {
-        onConcatMessage(msg.job);
+        onConcatMessage(msg.jobs);
       }
     };
     ws.onclose = () => { if (!serverGone) setTimeout(reconnect, 2000); };
@@ -1486,7 +1512,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     const data = await res.json();
     state = { isRunning: data.isRunning, isPaused: data.isPaused, queue: data.queue, config: data.config };
     if (data.config.watchFolder) document.getElementById('folder-input').value = data.config.watchFolder;
-    concat.job = data.concat;
+    concat.jobs = data.concatJobs || [];
     // Backfill the running job's output, which streamed before this page loaded
     const running = state.queue.find(i => i.status === 'running');
     if (running) {
@@ -1497,7 +1523,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       document.getElementById('log-line-count').textContent = logLines.length + ' lines';
     }
     render();
-    renderConcatJob();
+    renderConcatJobs();
     connectWS();
   }
 
@@ -2298,7 +2324,9 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   // selected: absolute paths in concat order (order of checking, reorderable)
   // dirs: subfolders, each with its own dirs/files (the whole tree is listed)
   // shown: every file in the listing, flattened in display order (checkbox index)
-  let concat = { path: '', parent: null, dirs: [], files: [], shown: [], selected: [], nameEdited: false, job: null };
+  // jobs: the server's concat queue (queued/running first in line, finished ones until cleared)
+  // openJobs: ids of jobs expanded (caret) to list their input files
+  let concat = { path: '', parent: null, dirs: [], files: [], shown: [], selected: [], nameEdited: false, jobs: [], openJobs: new Set() };
 
   const baseName = p => p.split(/[\\/]/).pop();
   const dirName  = p => p.replace(/[\\/][^\\/]+$/, '');
@@ -2311,10 +2339,24 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     return Math.round(bytes / 1e3) + ' KB';
   }
 
+  // A slow drive can take a while: show that it's loading, and if another
+  // folder is picked meanwhile, only the latest request's answer is shown.
+  let concatLoadSeq = 0;
   async function loadConcatFolder(dir) {
-    const res = await fetch('/api/videos?path=' + encodeURIComponent(dir));
-    const data = await res.json();
-    if (!res.ok) { setConcatStatus(data.error, true); return; }
+    const seq = ++concatLoadSeq;
+    const list = document.getElementById('concat-list');
+    const slow = setTimeout(() => {
+      if (seq === concatLoadSeq) list.innerHTML = `<div class="tree-folder">Loading ${escHtml(dir)}…</div>`;
+    }, 300);
+    let res, data;
+    try {
+      res = await fetch('/api/videos?path=' + encodeURIComponent(dir));
+      data = await res.json();
+    } catch (e) {
+      res = { ok: false }; data = { error: 'Could not load the folder: ' + e.message };
+    } finally { clearTimeout(slow); }
+    if (seq !== concatLoadSeq) return;
+    if (!res.ok) { setConcatStatus(data.error, true); renderConcat(); return; }
     concat.path = data.path;
     concat.parent = data.parent;
     concat.dirs = data.dirs;
@@ -2327,7 +2369,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   // folder (or its subfolders) that are gone now drop out of the concat order.
   async function reloadConcatFolder(btn) {
     if (!concat.path) return;
-    btn.classList.add('busy');
+    if (btn) btn.classList.add('busy');
     try {
       await loadConcatFolder(concat.path);
       const here = new Set(concat.shown.map(f => f.path));
@@ -2336,7 +2378,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       const before = concat.selected.length;
       concat.selected = concat.selected.filter(p => !inTree(p) || here.has(p));
       if (concat.selected.length !== before) renderConcat();
-    } finally { btn.classList.remove('busy'); }
+    } finally { if (btn) btn.classList.remove('busy'); }
   }
 
   function renderConcat() {
@@ -2346,6 +2388,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     if (concat.parent) html += `<div class="tree-folder cc-dir" onclick="loadConcatFolder(concat.parent)">${folderIcon} ..</div>`;
     // Files first, then subfolders with their contents, indented; clicking a folder opens it
     const indent = depth => depth ? ` style="padding-left:${10 + depth * 16}px"` : '';
+    const inQueue = new Set(concat.jobs.filter(j => j.status === 'queued' || j.status === 'running').flatMap(j => j.files));
     const renderFiles = (files, depth) => files.forEach(f => {
       const i = concat.shown.push(f) - 1;
       const idx = concat.selected.indexOf(f.path);
@@ -2353,6 +2396,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
         <input type="checkbox" ${idx >= 0 ? 'checked' : ''} onchange="toggleConcatFile(${i})" />
         ${idx >= 0 ? `<span class="cc-order">${idx + 1}</span>` : ''}
         <span class="cc-name">${escHtml(f.name)}</span>
+        ${inQueue.has(f.path) ? '<span class="cc-tag" title="Part of a queued or running concat">in queue</span>' : ''}
         <span class="cc-size">${fmtSize(f.size)}</span>
       </label>`;
     });
@@ -2387,27 +2431,55 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
         : '';
     }
     document.getElementById('concat-outdir').textContent = sel.length ? 'Saves to: ' + dirName(sel[0]) : '';
-    renderConcatJob();
+    document.getElementById('btn-concat').disabled = sel.length < 2;
+    renderConcatJobs();
   }
 
-  function renderConcatJob() {
-    const job = concat.job;
-    const running = job && job.status === 'running';
-    document.getElementById('btn-concat').disabled = running || concat.selected.length < 2;
-    document.getElementById('btn-concat-cancel').classList.toggle('hidden', !running);
-    document.getElementById('concat-progress').classList.toggle('hidden', !running);
-    document.getElementById('btn-concat-reveal').classList.toggle('hidden', !(job && job.status === 'done'));
-    if (!job) return;
-    document.getElementById('concat-bar').style.width = job.progress + '%';
-    if (running) setConcatStatus(`Concatenating… ${job.progress}%`);
-    else if (job.status === 'done') {
-      let msg = 'Done: ' + job.outputPath;
-      if (job.deleteOriginals && job.deleted) msg += `\nDeleted ${job.deleted.length} of ${job.files.length} originals`;
-      const errs = job.deleteErrors || [];
-      setConcatStatus(errs.length ? msg + '\nNot deleted:\n' + errs.join('\n') : msg, errs.length > 0);
-    }
-    else if (job.status === 'cancelled') setConcatStatus('Cancelled');
-    else if (job.status === 'error') setConcatStatus('ffmpeg failed:\n' + job.error, true);
+  const CJ_STATE = { queued: 'queued', running: '', done: 'done', error: 'failed', cancelled: 'cancelled' };
+  function renderConcatJobs() {
+    const jobs = concat.jobs;
+    document.getElementById('concat-jobs-header').classList.toggle('hidden', !jobs.length);
+    document.getElementById('btn-concat-clear').classList.toggle('off', !jobs.some(j => j.status !== 'queued' && j.status !== 'running'));
+    let waiting = 0;
+    document.getElementById('concat-jobs').innerHTML = jobs.map(job => {
+      const running = job.status === 'running', pending = running || job.status === 'queued';
+      const label = running ? job.progress + '%' : job.status === 'queued' ? `queued #${++waiting}` : CJ_STATE[job.status];
+      const xTitle = running ? 'Cancel (deletes the partial file)' : pending ? 'Remove from the queue' : 'Remove from the list';
+      const xCall = pending ? `apiConcatCancel(${job.id})` : `apiConcatRemove(${job.id})`;
+      // Kept short (folder name, ffmpeg's last line); hover for the full text
+      let detail = `${job.files.length} files in ${baseName(dirName(job.outputPath))}`, full = dirName(job.outputPath), err = false;
+      if (job.status === 'error') {
+        full = job.error || 'ffmpeg failed';
+        detail = full.trim().split('\n').pop();
+        err = true;
+      }
+      else if (job.status === 'done' && job.deleteOriginals && job.deleted) {
+        detail += `\nDeleted ${job.deleted.length} of ${job.files.length} originals`;
+        const errs = job.deleteErrors || [];
+        if (errs.length) { detail += '\nNot deleted:\n' + errs.join('\n'); err = true; }
+      }
+      const open = concat.openJobs.has(job.id);
+      const deleted = new Set(job.deleted || []);
+      const files = open ? `<div class="cj-files">${job.files.map((f, i) =>
+        `<div title="${escHtml(f)}"${deleted.has(f) ? ' class="gone"' : ''}><span class="cj-num">${i + 1}</span>${escHtml(baseName(f))}${deleted.has(f) ? ' (deleted)' : ''}</div>`).join('')}</div>` : '';
+      return `<div class="cj-item ${job.status}">
+        <div class="cj-row">
+          <span class="cj-caret" title="${open ? 'Hide' : 'Show'} its files" onclick="toggleConcatJob(${job.id})">${open ? '▾' : '▸'}</span>
+          <span class="cj-state">${label}</span>
+          <span class="cj-name" title="${escHtml(job.outputPath)}">${escHtml(baseName(job.outputPath))}</span>
+          ${job.status === 'done' ? `<span class="cs-btn" title="Open its folder with the joined video selected" onclick="revealPath('/api/concat/${job.id}/reveal')">📂</span>` : ''}
+          <span class="cs-btn" title="${xTitle}" onclick="${xCall}">✕</span>
+        </div>
+        ${running ? `<div class="cj-bar"><div style="width:${job.progress}%"></div></div>` : ''}
+        <div class="cj-detail ${err ? 'err' : ''}" title="${escHtml(full)}">${escHtml(detail)}</div>
+        ${files}
+      </div>`;
+    }).join('');
+  }
+
+  function toggleConcatJob(id) {
+    if (!concat.openJobs.delete(id)) concat.openJobs.add(id);
+    renderConcatJobs();
   }
 
   function setConcatStatus(text, isErr) {
@@ -2437,6 +2509,8 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     renderConcat();
   }
 
+  // Add the selection to the server's concat queue, then clear it so the next
+  // set can be picked (from any folder) while this one waits or runs
   async function apiConcat() {
     const outputName = document.getElementById('concat-name').value.trim();
     const res = await fetch('/api/concat', {
@@ -2445,24 +2519,40 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
       body: JSON.stringify({ files: concat.selected, outputName, deleteOriginals: document.getElementById('concat-delete').checked })
     });
     const data = await res.json();
-    if (!res.ok) setConcatStatus(data.error, true);
+    if (!res.ok) { setConcatStatus(data.error, true); return; }
+    setConcatStatus('');
+    concat.selected = [];
+    concat.nameEdited = false;
+    renderConcat();
   }
 
-  async function apiConcatCancel() {
-    await fetch('/api/concat/cancel', { method: 'POST' });
+  async function apiConcatCancel(id) {
+    await fetch(`/api/concat/${id}/cancel`, { method: 'POST' });
   }
 
-  function onConcatMessage(job) {
-    const wasRunning = concat.job && concat.job.status === 'running';
-    concat.job = job;
-    if (wasRunning && job && job.status === 'done') {
-      playChime();
-      // Reset for the next concat and show the new file in the listing
-      concat.selected = [];
-      concat.nameEdited = false;
-      if (concat.path) { loadConcatFolder(concat.path).then(renderConcatJob); return; }
-    }
-    renderConcatJob();
+  async function apiConcatRemove(id) {
+    await fetch(`/api/concat/${id}`, { method: 'DELETE' });
+  }
+
+  async function apiConcatClearDone() {
+    await fetch('/api/concat/clear-done', { method: 'POST' });
+  }
+
+  function onConcatMessage(jobs) {
+    const before = new Map(concat.jobs.map(j => [j.id, j.status]));
+    const wasPending = s => s === 'queued' || s === 'running';
+    const pendingKey = list => list.filter(j => wasPending(j.status)).map(j => j.id).join();
+    const lineChanged = pendingKey(concat.jobs) !== pendingKey(jobs);
+    const justDone = jobs.filter(j => j.status === 'done' && wasPending(before.get(j.id)));
+    const busyBefore = [...before.values()].some(wasPending);
+    concat.jobs = jobs;
+    // Chime once the whole queue has drained (not when it was all cancelled)
+    if (busyBefore && !jobs.some(j => wasPending(j.status)) && justDone.length) playChime();
+    // Show new files (and drop deleted originals) in the listing
+    if (justDone.length && concat.path) { reloadConcatFolder(); return; }
+    // Progress ticks only redraw the jobs list, so the file list isn't rebuilt
+    // under the mouse; its "in queue" tags change only when the line does
+    if (lineChanged) renderConcat(); else renderConcatJobs();
   }
 
   // ── Util ──
@@ -2626,7 +2716,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
 
   async function serverAction(kind) {
     closeServerMenu();
-    const busy = state.queue.some(i => i.status === 'running') || (concat.job && concat.job.status === 'running');
+    const busy = state.queue.some(i => i.status === 'running') || concat.jobs.some(j => j.status === 'running');
     const question = kind === 'shutdown' ? 'Shut down the Subtitle Studio server?' : 'Reboot the Subtitle Studio server?';
     const warning = busy ? '\n\nThe running job will be stopped. A finished Japanese transcript (.ja.srt) is kept, so the next run only translates.' : '';
     if (!confirm(question + warning)) return;
