@@ -1427,6 +1427,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
   let logVisible = false;
   let ws;
   let logLines = [];
+  const LOG_LINES = 2000;   // kept in logLines/itemLog and shown in the panel
   let lastRunningId = null; // opens the log panel when a new job starts
   let ranJob = false;       // a job ran since Start, so a drained queue gets a chime
   let queueDoneTitle = false; // tab title says "Queue done" until the next job starts
@@ -1518,7 +1519,7 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     if (running) {
       try {
         const r = await fetch(`/api/log/${running.id}`);
-        if (r.ok) logLines = (await r.json()).log.slice(-2000).map(line => ({ id: running.id, line }));
+        if (r.ok) logLines = (await r.json()).log.slice(-LOG_LINES).map(line => ({ id: running.id, line }));
       } catch {}
       document.getElementById('log-line-count').textContent = logLines.length + ' lines';
     }
@@ -1821,10 +1822,11 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
 
   function appendLog(line, id) {
     logLines.push({ id, line });
-    if (logLines.length > 2000) logLines.shift();
+    if (logLines.length > LOG_LINES) logLines.shift();
     if (logFilterId !== null) {
       if (id !== logFilterId) return;
       itemLog.push(line);
+      if (itemLog.length > LOG_LINES) itemLog.shift();
     }
     renderLogCount();
     if (!logVisible) return;
@@ -1834,6 +1836,9 @@ hf download openai/whisper-large-v3 tokenizer.json --local-dir ~/models/anime-wh
     if (cls) div.className = cls;
     div.textContent = line;
     body.appendChild(div);
+    // The panel only re-renders from the capped arrays on toggle/filter, so
+    // trim it here too, or an open panel grows for the whole batch
+    while (body.childElementCount > LOG_LINES) body.firstElementChild.remove();
     body.scrollTop = body.scrollHeight;
   }
 

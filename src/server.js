@@ -500,9 +500,15 @@ async function getDurationSeconds(filePath) {
   });
 }
 
+// Lines kept per item while it runs (or after it fails, for lastError and
+// debugging), and after it succeeds: a big batch keeps every finished item
+// in memory until Clear done, so their logs are trimmed
+const LOG_LINES = 2000;
+const DONE_LOG_LINES = 200;
+
 function logItem(item, line) {
   item.log.push(line);
-  if (item.log.length > 2000) item.log.shift();
+  if (item.log.length > LOG_LINES) item.log.shift();
   broadcast({ type: 'log', id: item.id, line });
 }
 
@@ -1110,7 +1116,10 @@ function runNext() {
     item.stage = null;
     item.status = ok ? 'done' : 'error';
     item.finishedAt = Date.now();
-    if (ok) item.progress = 100;
+    if (ok) {
+      item.progress = 100;
+      item.log = item.log.slice(-DONE_LOG_LINES);
+    }
     broadcastState();
     if (exitAfterJob) return shutdown();
     if (!isPaused && isRunning) setTimeout(runNext, 500);

@@ -256,6 +256,39 @@ test('errored items carry their error and timings; Retry errors requeues them al
   });
 });
 
+test('item logs are capped while running and trimmed further once done', { timeout: MIN }, async () => {
+  const dir = makeWatchFolder();
+  fs.copyFileSync(path.join(dir, 'speech.mp4'), path.join(dir, 'speech-fail.mp4'));
+  // Prints 2500 lines; writes the SRT (success) unless the video name has "fail"
+  const fake = path.join(dir, '..', path.basename(dir) + '-chatty-whisper.js');
+  fs.writeFileSync(fake, `const fs = require('fs'), path = require('path');
+const video = process.argv[2], out = process.argv[process.argv.indexOf('--output_dir') + 1];
+for (let i = 1; i <= 2500; i++) console.log('line ' + i);
+if (!video.includes('fail')) fs.writeFileSync(path.join(out, path.basename(video, '.mp4') + '.srt'), '1\\n00:00:00,000 --> 00:00:01,000\\nhi\\n');
+`);
+  try {
+    await withServer(baseConfig(dir, {
+      backend: 'ctranslate2', whisperExecutable: fake, whisperArgs: { vad_segmentation: 'False' }
+    }), async s => {
+      await s.post('/api/start');
+      await waitFor(async () => (await s.get('/api/state')).queue.every(settled), 30000, 'both items to finish');
+      const { queue } = await s.get('/api/state');
+      const done = queue.find(i => !i.filePath.includes('fail'));
+      const failed = queue.find(i => i.filePath.includes('fail'));
+      assert.equal(done.status, 'done');
+      assert.equal(failed.status, 'error');
+      const doneLog = await s.log(done.id);
+      assert.equal(doneLog.length, 200, 'a done item keeps only its last 200 lines');
+      assert.ok(doneLog.includes('line 2500'), 'the newest lines are the ones kept');
+      const failedLog = await s.log(failed.id);
+      assert.equal(failedLog.length, 2000, 'an errored item keeps the running cap');
+      assert.ok(failedLog.includes('line 2500') && !failedLog.includes('line 1'));
+    });
+  } finally {
+    fs.rmSync(fake, { force: true });
+  }
+});
+
 test('auto-start respects Pause: a new video waits until Resume', { timeout: MIN }, async () => {
   const dir = makeWatchFolder();
   // A whisper stand-in that takes a moment, then fails (no .srt written)
